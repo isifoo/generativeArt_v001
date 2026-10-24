@@ -615,7 +615,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.2, rmax: 18.75, gain: 1.6, noise: 0.22, iters: 6, stroke: 2, key: false, mirror: true, subject: 0, grid: 3, px: 6,
+const P = { rmin: 3.2, rmax: 18.75, gain: 1.6, noise: 0.22, iters: 6, stroke: 2, key: false, mirror: true, subject: 1, grid: 3, px: 6,
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -1063,6 +1063,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 // ---------------------------------------------------------------- go
 setView('gpu');
 await start();
+loadSegmenter();
 await startCamera();
 window.__dbg = async (name, count = 64, off = 0) => {
   const b = B[name], size = Math.min(b.size, (off + count) * 4);
