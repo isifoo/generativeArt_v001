@@ -524,7 +524,7 @@ ${bilFn('bmk', 'mk')}
 
 
 const DRAWV4 = /* wgsl */`
-struct V4 { a:vec4f, b:vec4f, c:vec4f, d:vec4f, e:vec4f };
+struct V4 { a:vec4f, b:vec4f, c:vec4f, d:vec4f, e:vec4f, f:vec4f };
 @group(0) @binding(0) var<uniform> q:V4;
 @group(0) @binding(1) var<storage, read> st: array<f32>;
 @group(0) @binding(2) var<storage, read> mk: array<f32>;
@@ -627,14 +627,14 @@ fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
   let warp = q.e.x;
   let n = i32(N);
   if (q.e.y > 3.5) {
-    // small to big: the finest cube grid covers everything, then layers of bigger cubes (each x1.618 the one below) are laid over it.
+    // small to big: the finest cube grid covers everything, then layers of bigger cubes (each one a set ratio bigger than the one below) are laid over it.
     // On every layer a random share of the cubes exists; the biggest layer wins, so big cubes cover the small ones around them
     let s0 = q.a.z;
     let top = i32(q.e.z);
     var rcol = vec3f(0.0);
     for (var L2 = 4; L2 >= 0; L2--) {
       if (L2 > top) { continue; }
-      let Mk = s0*pow(1.618034, f32(L2));
+      let Mk = s0*pow(q.f.x, f32(L2));
       let off = lat(3*L2 + 3, 3*L2, s0*1.0);
       let pk = pp - off;
       let ctr = hexCtr(pk, Mk, 0);
@@ -926,7 +926,7 @@ const B = {
   gray: mk(F32, S), keyr: mk(F32, S), keyA: mk(F32, S), keyB: mk(F32, S), keyC: mk(F32, S),
   lut: mk(36 * 256 * 4, S), hist2: mk(256 * 4, S | CD), stretch: mk(16, S),
   cl: mk(F32, S), dg: mk(F32, S), dtmp: mk(F32, S), dgb: mk(F32, S),
-  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), v4u: mk(80, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
+  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), v4u: mk(96, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
   na: mk(NGW * NGH * 4, S | CD), nb: mk(NGW * NGH * 4, S | CD),
   meta: mk(16, S | CD | CSRC), args: mk(48, S | GPUBufferUsage.INDIRECT | CD),
   pos: mk(MAXN * 8, S | CD), mv: mk(MAXN * 16, S), head: mk(GW * GH * 4, S), nxt: mk(MAXN * 4, S),
@@ -1349,7 +1349,7 @@ function encodeV2(enc, bill = false) {
 
 function encodeV4(enc) {
   const rgb = (c) => c.map((x) => x / 255);
-  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, P.v4r, P.v4c]));
+  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, P.v4r, P.v4c, P.v4q, 0, 0, 0]));
   const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
@@ -1551,7 +1551,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1676,7 +1676,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
