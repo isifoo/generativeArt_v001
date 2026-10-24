@@ -524,7 +524,7 @@ ${bilFn('bmk', 'mk')}
 
 
 const DRAWV4 = /* wgsl */`
-struct V4 { a:vec4f, b:vec4f, c:vec4f, d:vec4f };
+struct V4 { a:vec4f, b:vec4f, c:vec4f, d:vec4f, e:vec4f };
 @group(0) @binding(0) var<uniform> q:V4;
 @group(0) @binding(1) var<storage, read> st: array<f32>;
 @group(0) @binding(2) var<storage, read> mk: array<f32>;
@@ -574,26 +574,53 @@ fn levelAt(pp:vec2f) -> f32 {
   let lv = min(floor(dd*L), L - 1.0);
   return select(q.c.w, lv, bmk(sp) > 0.5);
 }
+fn lvn(c:Cell, i:i32, j:i32, N:f32, L:f32) -> f32 {
+  return levelAt(c.o + (c.e1*(f32(i) + 0.5) + c.e2*(f32(j) + 0.5))/N)/max(L - 1.0, 1.0);
+}
 fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
 @fragment fn fs(@builtin(position) f:vec4f) -> @location(0) vec4f {
   let s = q.a.z; let N = q.a.w; let M = s*N;
   let pp = vec2f(f.x, -f.y);
   let c = cellAt(pp, M);
-  let fu = c.u*N; let fv = c.v*N;
-  let iu = min(floor(fu), N - 1.0); let iv = min(floor(fv), N - 1.0);
-  let cen = c.o + (c.e1*(iu + 0.5) + c.e2*(iv + 0.5))/N;
+  let L = q.b.x;
+  let warp = q.e.x;
+  let n = i32(N);
+  // pixel size follows its level: rows (along face axis 2) and the pixels inside a row (axis 1) get weights, the face edges stay fixed,
+  // so a pixel that grows takes the space from its neighbours
+  var rw: array<f32,10>;
+  var rt = 0.0;
+  for (var j = 0; j < n; j++) {
+    var s = 0.0;
+    for (var i = 0; i < n; i++) { s += lvn(c, i, j, N, L); }
+    rw[j] = 1.0 + warp*s/N; rt += rw[j];
+  }
+  var jj = n - 1; var vfr = 0.9999; var acc = 0.0; let tv = clamp(c.v, 0.0, 1.0)*rt;
+  for (var j = 0; j < n; j++) {
+    if (tv < acc + rw[j]) { jj = j; vfr = (tv - acc)/rw[j]; break; }
+    acc += rw[j];
+  }
+  var cw: array<f32,10>;
+  var ct = 0.0;
+  for (var i = 0; i < n; i++) { cw[i] = 1.0 + warp*lvn(c, i, jj, N, L); ct += cw[i]; }
+  var ii = n - 1; var ufr = 0.9999; acc = 0.0; let tu = clamp(c.u, 0.0, 1.0)*ct;
+  for (var i = 0; i < n; i++) {
+    if (tu < acc + cw[i]) { ii = i; ufr = (tu - acc)/cw[i]; break; }
+    acc += cw[i];
+  }
+  let su0 = cw[ii]/ct; let sv0 = rw[jj]/rt;
+  let fu = f32(ii) + ufr; let fv = f32(jj) + vfr;
+  let cen = c.o + (c.e1*(f32(ii) + 0.5) + c.e2*(f32(jj) + 0.5))/N;
   let lv = levelAt(cen);
   let su = select(-1.0, 1.0, fract(fu) > 0.5); let sv = select(-1.0, 1.0, fract(fv) > 0.5);
   let lvU = levelAt(cen + c.e1*su/N); let lvV = levelAt(cen + c.e2*sv/N);
-  let L = q.b.x;
   var tone = 0.80;
   if (c.kind == 0) { tone = 0.60; } else if (c.kind == 2) { tone = 0.94; }
   if (c.kind != 1 && hash2(c.ci, c.cj*7 + c.kind) < q.b.z) { tone = 1.54 - tone; }
   let depth = q.b.y;
   let val = clamp(tone - depth*lv/max(L - 1.0, 1.0), 0.0, 1.0);
   var col = mix(q.c.rgb, q.d.rgb, val);
-  let fru = min(fract(fu), 1.0 - fract(fu))/(N*c.gu);
-  let frv = min(fract(fv), 1.0 - fract(fv))/(N*c.gv);
+  let fru = min(fract(fu), 1.0 - fract(fu))*su0/c.gu;
+  let frv = min(fract(fv), 1.0 - fract(fv))*sv0/c.gv;
   let lw = q.d.w;
   let heavyU = select(q.b.w, 1.0, abs(lvU - lv) > 0.5);
   let heavyV = select(q.b.w, 1.0, abs(lvV - lv) > 0.5);
@@ -714,7 +741,7 @@ const B = {
   gray: mk(F32, S), keyr: mk(F32, S), keyA: mk(F32, S), keyB: mk(F32, S), keyC: mk(F32, S),
   lut: mk(36 * 256 * 4, S), hist2: mk(256 * 4, S | CD), stretch: mk(16, S),
   cl: mk(F32, S), dg: mk(F32, S), dtmp: mk(F32, S), dgb: mk(F32, S),
-  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), v4u: mk(64, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
+  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), v4u: mk(80, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
   na: mk(NGW * NGH * 4, S | CD), nb: mk(NGW * NGH * 4, S | CD),
   meta: mk(16, S | CD | CSRC), args: mk(48, S | GPUBufferUsage.INDIRECT | CD),
   pos: mk(MAXN * 8, S | CD), mv: mk(MAXN * 16, S), head: mk(GW * GH * 4, S), nxt: mk(MAXN * 4, S),
@@ -1137,7 +1164,7 @@ function encodeV2(enc, bill = false) {
 
 function encodeV4(enc) {
   const rgb = (c) => c.map((x) => x / 255);
-  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w]));
+  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, 0, 0, 0]));
   const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
@@ -1339,7 +1366,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1464,7 +1491,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
