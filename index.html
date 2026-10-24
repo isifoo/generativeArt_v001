@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261024194658">
+<meta name="build" content="20261024195030">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.21 (2026-10-24 19:46)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.22 (2026-10-24 19:50)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -99,6 +99,7 @@
       <div class="ctl" data-views="v4"><span>Size warp</span><input type="range" id="v4k" min="0" max="4" step="0.05" value="1.5"><output></output></div>
       <div class="ctl" data-views="v4"><span>Outer position shift</span><input type="range" id="v4j" min="0" max="1" step="0.01" value="0.6"><output></output></div>
       <div class="ctl" data-views="v4"><span>Inner random sizes</span><input type="range" id="v4z" min="0" max="1" step="0.01" value="0.7"><output></output></div>
+      <div class="ctl" data-views="v4"><span>Jitter speed</span><input type="range" id="v4y" min="0" max="5" step="0.1" value="1.5"><output></output></div>
       <div class="ctl" data-views="v4"><span>Background level</span><input type="range" id="v4b" min="0" max="7" step="1" value="0"><output></output></div>
       <div class="ctl" data-views="v3"><span>Bill colour</span><span><input type="color" id="v3c" value="#d7d4d4"></span><span></span></div>
       <div class="ctl" data-views="v3"><span>Camera zoom</span><input type="range" id="v3w" min="1" max="3" step="0.01" value="1"><output></output></div>
@@ -134,6 +135,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261024194658"></script>
+<script type="module" src="gpu_line.js?b=20261024195030"></script>
 </body>
 </html>

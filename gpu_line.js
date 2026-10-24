@@ -652,7 +652,15 @@ fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
           var jit = vec2f(0.0);
           if (L2 > 0) {
             jit = vec2f(hash2(i*13 + L2*7, j*17 + 3), hash2(i*19 + 5, j*11 + L2*9)) - vec2f(0.5);
-            jit = jit*2.0*Mk*q.f.y*(1.0 - inner);
+            let ph = vec2f(hash2(i*23 + 1, j*29 + L2), hash2(i*31 + 7, j*37 + L2*3))*6.2831853;
+            let tt = q.f.w;
+            jit = jit*1.2 + vec2f(sin(tt*1.3 + ph.x), cos(tt*1.1 + ph.y))*0.6;
+            // the subject pushes the cubes around it away: the mask gradient at a ring around the cube
+            let rg = Mk*1.5;
+            let gx = bmk(toCanvas(ca0 + vec2f(rg, 0.0))*0.5) - bmk(toCanvas(ca0 - vec2f(rg, 0.0))*0.5);
+            let gy = bmk(toCanvas(ca0 + vec2f(0.0, rg))*0.5) - bmk(toCanvas(ca0 - vec2f(0.0, rg))*0.5);
+            jit = jit - vec2f(gx, gy)*1.6;
+            jit = jit*Mk*q.f.y*(1.0 - inner);
           }
           let p2c = pk - lp - jit;
           if (hexEdge(p2c, Mk) < 0.0) { continue; }
@@ -1416,9 +1424,11 @@ function encodeV2(enc, bill = false) {
 }
 
 
+let v4T = 0, v4L = performance.now();
 function encodeV4(enc) {
+  const nowT = performance.now(); v4T += Math.min(0.1, (nowT - v4L)/1000)*(P.v4y ?? 1.5); v4L = nowT;
   const rgb = (c) => c.map((x) => x / 255);
-  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, P.v4r, P.v4c, P.v4q, P.v4j, P.v4z, 0]));
+  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, P.v4r, P.v4c, P.v4q, P.v4j, P.v4z, v4T]));
   const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
@@ -1620,7 +1630,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4y: 'v4y', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1745,7 +1755,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
