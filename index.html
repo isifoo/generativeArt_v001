@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Line GPU</title>
+<style>
+  :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:13px/1.45 system-ui, Segoe UI, sans-serif; }
+  #app { display:flex; height:100vh; gap:16px; padding:16px; }
+  #stage { flex:0 0 auto; height:100%; aspect-ratio:9/16; position:relative; background:#000; border-radius:4px; overflow:hidden; }
+  #stage canvas, #stage video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  #side { flex:1; min-width:300px; overflow:auto; display:flex; flex-direction:column; gap:14px; padding-right:4px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin:0 0 6px; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; }
+  button { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:4px; padding:7px 12px; font:inherit; cursor:pointer; }
+  button:hover { border-color:#555; }
+  button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.5; cursor:default; }
+  .ctl { display:grid; grid-template-columns:90px 1fr 48px; gap:8px; align-items:center; margin:3px 0; }
+  .ctl output { text-align:right; color:var(--dim); font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  input[type=color] { width:36px; height:24px; padding:0; border:1px solid var(--line); background:none; }
+  table { width:100%; border-collapse:collapse; font:12px ui-monospace, Consolas, monospace; font-variant-numeric:tabular-nums; }
+  td { padding:2px 0; } td:last-child { text-align:right; }
+  tr.sum td { border-top:1px solid var(--line); padding-top:4px; color:#fff; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin:6px 0; }
+  .bar i { display:block; height:100%; background:var(--accent); width:0; }
+  #msg { color:#e8b04a; white-space:pre-wrap; font:12px ui-monospace, Consolas, monospace; }
+  #drop { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:#000c; color:#fff; font-size:16px; }
+  .note { color:var(--dim); font-size:12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <video id="vid" muted loop playsinline></video>
+    <canvas id="cv" width="1080" height="1920"></canvas>
+    <div id="drop">Drop a video here</div>
+  </div>
+  <div id="side">
+    <div>
+      <h2>Version</h2>
+      <div class="row" id="versions"></div>
+    </div>
+    <div id="msg"></div>
+    <div>
+      <h2>Render time (measured on this GPU)</h2>
+      <div class="bar"><i id="budget"></i></div>
+      <table id="stats"></table>
+    </div>
+    <div>
+      <h2>Look</h2>
+      <div class="ctl"><span>Line</span><span><input type="color" id="fg" value="#d23219"> <input type="color" id="bg" value="#f2f0ee"></span><span></span></div>
+      <div class="ctl"><span>Stroke px</span><input type="range" id="stroke" min="1" max="6" step="0.25" value="2"><output></output></div>
+      <div class="ctl"><span>8 bit pixel</span><input type="range" id="px" min="3" max="12" step="1" value="6"><output></output></div>
+      <div class="ctl"><span>90 deg grid</span><input type="range" id="grid" min="1" max="10" step="0.5" value="3"><output></output></div>
+    </div>
+    <div>
+      <h2>Solver</h2>
+      <div class="ctl"><span>Rmin</span><input type="range" id="rmin" min="2.5" max="6" step="0.05" value="3.2"><output></output></div>
+      <div class="ctl"><span>Rmax</span><input type="range" id="rmax" min="10" max="30" step="0.25" value="18.75"><output></output></div>
+      <div class="ctl"><span>Gain</span><input type="range" id="gain" min="1" max="2.5" step="0.05" value="1.6"><output></output></div>
+      <div class="ctl"><span>Noise</span><input type="range" id="noise" min="0" max="0.4" step="0.01" value="0.22"><output></output></div>
+      <div class="ctl"><span>Steps/frame</span><input type="range" id="iters" min="1" max="12" step="1" value="6"><output></output></div>
+      <div class="ctl"><span>Subject</span><select id="subject"><option value="0">Off</option><option value="1">Subject only</option><option value="2">Background only</option></select><span></span></div>
+      <label class="note"><input type="checkbox" id="mirror" checked> mirror camera</label><br>
+      <label class="note"><input type="checkbox" id="key"> key out red (red background only)</label>
+    </div>
+    <div>
+      <h2>Actions</h2>
+      <div class="row">
+        <button id="restart">Restart line</button>
+        <button id="bench">Benchmark</button>
+        <button id="cam">Camera</button>
+        <label class="note" style="align-self:center"><button id="pick" type="button">Load video</button><input id="file" type="file" accept="video/*" hidden></label>
+      </div>
+      <p class="note" id="benchnote"></p>
+    </div>
+  </div>
+</div>
+<script type="module" src="gpu_line.js"></script>
+</body>
+</html>
