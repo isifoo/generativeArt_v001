@@ -585,6 +585,41 @@ fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
   let L = q.b.x;
   let warp = q.e.x;
   let n = i32(N);
+  if (q.e.y > 0.5) {
+    // size contrast: light areas merge pixels into one big block, dark areas stay split into small ones (like line spacing in V1)
+    var top = 1; var topE = 0;
+    for (var k = 0; k < 5; k++) { if (top < n) { top *= 2; topE += 1; } }
+    let px = min(i32(floor(clamp(c.u, 0.0, 0.9999)*N)), n - 1); let py = min(i32(floor(clamp(c.v, 0.0, 0.9999)*N)), n - 1);
+    var b = top; var u0 = 0; var v0 = 0; var u1 = n; var v1 = n;
+    for (var it = 0; it < 6; it++) {
+      u0 = (px/b)*b; v0 = (py/b)*b; u1 = min(u0 + b, n); v1 = min(v0 + b, n);
+      var mn = 99;
+      for (var j = v0; j < v1; j++) {
+        for (var i = u0; i < u1; i++) {
+          let e = i32(floor((1.0 - lvn(c, i, j, N, L))*(f32(topE) + 0.999)));
+          mn = min(mn, 1 << u32(e));
+        }
+      }
+      if (mn >= b || b == 1) { break; }
+      b = b/2;
+    }
+    let bcen = c.o + (c.e1*(f32(u0 + u1)*0.5) + c.e2*(f32(v0 + v1)*0.5))/N;
+    let blv = levelAt(bcen);
+    var btone = 0.80;
+    if (c.kind == 0) { btone = 0.60; } else if (c.kind == 2) { btone = 0.94; }
+    if (c.kind != 1 && hash2(c.ci, c.cj*7 + c.kind) < q.b.z) { btone = 1.54 - btone; }
+    let bval = clamp(btone - q.b.y*blv/max(L - 1.0, 1.0), 0.0, 1.0);
+    var bcol = mix(q.c.rgb, q.d.rgb, bval);
+    let gu = c.u*N; let gv = c.v*N;
+    let du = min(gu - f32(u0), f32(u1) - gu)/(N*c.gu);
+    let dv = min(gv - f32(v0), f32(v1) - gv)/(N*c.gv);
+    let blw = q.d.w;
+    var bink = max(cov(du, blw), cov(dv, blw));
+    let bmu = min(c.u, 1.0 - c.u)/c.gu; let bmv = min(c.v, 1.0 - c.v)/c.gv;
+    bink = max(bink, max(cov(bmu, blw*2.0), cov(bmv, blw*2.0)));
+    bcol = mix(bcol, q.c.rgb, clamp(bink, 0.0, 1.0));
+    return vec4f(bcol, 1.0);
+  }
   // pixel size follows its level: rows (along face axis 2) and the pixels inside a row (axis 1) get weights, the face edges stay fixed,
   // so a pixel that grows takes the space from its neighbours
   var rw: array<f32,10>;
@@ -1164,7 +1199,7 @@ function encodeV2(enc, bill = false) {
 
 function encodeV4(enc) {
   const rgb = (c) => c.map((x) => x / 255);
-  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, 0, 0, 0]));
+  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, 0, 0]));
   const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
@@ -1366,7 +1401,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1491,7 +1526,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
