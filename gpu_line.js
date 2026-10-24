@@ -639,7 +639,16 @@ fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
       let pk = pp - off;
       let ctr = hexCtr(pk, Mk, 0);
       let id = vec2i(i32(round(ctr.x/(H3*Mk))), i32(round(ctr.y/(Mk*0.5))));
-      if (L2 > 0 && hash2(id.x*3 + 1 + L2*101, id.y*5 + 2 + L2*57) >= q.e.w) { continue; }
+      if (L2 > 0) {
+        // size follows the feed: a bigger cube only exists where the picture under it is light, so light areas grow big cubes,
+        // dark areas keep the finest ones, and the sizes move with the video
+        let ca = off + ctr;
+        let rr = Mk*0.5;
+        let dm = (darkAt(ca) + darkAt(ca + vec2f(rr, 0.0)) + darkAt(ca - vec2f(rr, 0.0)) + darkAt(ca + vec2f(0.0, rr)) + darkAt(ca - vec2f(0.0, rr)))*0.2;
+        let jit = (hash2(id.x*3 + 1 + L2*101, id.y*5 + 2 + L2*57) - 0.5)*0.2;
+        let thr = (f32(L2)/(f32(top) + 1.0))*(1.6 - 1.2*q.e.w);
+        if (1.0 - dm < thr + jit) { continue; }
+      }
       let p2 = pk - ctr;
       let c2 = cellAt(p2, Mk);
       let cen2 = off + ctr + c2.o + (c2.e1 + c2.e2)*0.5;

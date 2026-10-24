@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261024170823">
+<meta name="build" content="20261024171543">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.17 (2026-10-24 17:08)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.18 (2026-10-24 17:15)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -94,7 +94,7 @@
       <div class="ctl" data-views="v4"><span>Same-level line</span><input type="range" id="v4a" min="0" max="1" step="0.01" value="0.35"><output></output></div>
       <div class="ctl" data-views="v4"><span>Size mode (0 grid, 1 merge, 2 golden, 3 big to small, 4 small to big)</span><input type="range" id="v4m" min="0" max="4" step="1" value="4"><output></output></div>
       <div class="ctl" data-views="v4"><span>Size layers</span><input type="range" id="v4r" min="0" max="4" step="1" value="3"><output></output></div>
-      <div class="ctl" data-views="v4"><span>Merge chance</span><input type="range" id="v4c" min="0" max="1" step="0.01" value="0.35"><output></output></div>
+      <div class="ctl" data-views="v4"><span>Bigger in light areas</span><input type="range" id="v4c" min="0" max="1" step="0.01" value="0.5"><output></output></div>
       <div class="ctl" data-views="v4"><span>Size warp</span><input type="range" id="v4k" min="0" max="4" step="0.05" value="1.5"><output></output></div>
       <div class="ctl" data-views="v4"><span>Background level</span><input type="range" id="v4b" min="0" max="7" step="1" value="0"><output></output></div>
       <div class="ctl" data-views="v3"><span>Bill colour</span><span><input type="color" id="v3c" value="#d7d4d4"></span><span></span></div>
@@ -131,6 +131,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261024170823"></script>
+<script type="module" src="gpu_line.js?b=20261024171543"></script>
 </body>
 </html>
