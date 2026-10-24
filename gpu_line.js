@@ -1081,7 +1081,7 @@ const versions = [
   { id: 'src', label: 'Source video' },
   { id: 'gpu', label: 'V1 Line' },
   { id: 'v2', label: 'V2 Line' },
-  { id: 'v3', label: 'V3 Engraving' },
+  { id: 'v3', label: '100$ bill' },
   { id: 'bit8', label: '8 bit' },
 ];
 function setView(id) {
@@ -1091,6 +1091,10 @@ function setView(id) {
   if (id !== 'src') sim.boost = 8;
   if (id === 'v2' || id === 'v3') loadSegmenter();
   document.querySelectorAll('#versions button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
+  const vl = versions.find((v) => v.id === id);
+  $('#setHead').textContent = vl.label + ' settings';
+  $('#settings').hidden = id === 'src';
+  document.querySelectorAll('[data-views]').forEach((el) => { el.hidden = !el.dataset.views.split(',').includes(id); });
 }
 for (const v of versions) {
   const b = document.createElement('button'); b.textContent = v.label; b.dataset.id = v.id;

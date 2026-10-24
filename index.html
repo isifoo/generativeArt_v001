@@ -30,6 +30,7 @@
   #msg { color:#e8b04a; white-space:pre-wrap; font:12px ui-monospace, Consolas, monospace; }
   #drop { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:#000c; color:#fff; font-size:16px; }
   .note { color:var(--dim); font-size:12px; }
+  [hidden] { display:none !important; }
 </style>
 </head>
 <body>
@@ -50,29 +51,29 @@
       <div class="bar"><i id="budget"></i></div>
       <table id="stats"></table>
     </div>
-    <div>
-      <h2>Look</h2>
-      <div class="ctl"><span>Line</span><span><input type="color" id="fg" value="#d23219"> <input type="color" id="bg" value="#f2f0ee"></span><span></span></div>
-      <div class="ctl"><span>Stroke px</span><input type="range" id="stroke" min="1" max="6" step="0.25" value="4.75"><output></output></div>
-      <div class="ctl"><span>8 bit pixel</span><input type="range" id="px" min="3" max="12" step="1" value="6"><output></output></div>
-      <div class="ctl"><span>V2 spacing</span><input type="range" id="v2s" min="8" max="40" step="1" value="16"><output></output></div>
-      <div class="ctl"><span>V2 relief</span><input type="range" id="v2r" min="0" max="160" step="2" value="70"><output></output></div>
-      <div class="ctl"><span>V2 thin</span><input type="range" id="v2a" min="0.02" max="0.4" step="0.01" value="0.08"><output></output></div>
-      <div class="ctl"><span>V2 thick</span><input type="range" id="v2b" min="0.5" max="1" step="0.01" value="0.9"><output></output></div>
-      <div class="ctl"><span>V2 fg lines</span><select id="v2m"><option value="0">Relief (curved)</option><option value="2">Straight (flat)</option></select><span></span></div>
-      <div class="ctl"><span>V3 hatch px</span><input type="range" id="v3s" min="3" max="16" step="0.5" value="7"><output></output></div>
-      <div class="ctl"><span>V3 dot px</span><input type="range" id="v3d" min="4" max="18" step="0.5" value="8"><output></output></div>
-      <div class="ctl"><span>V3 form</span><input type="range" id="v3r" min="0" max="80" step="1" value="20"><output></output></div>
-      <div class="ctl"><span>V3 angle</span><input type="range" id="v3a" min="0" max="90" step="1" value="30"><output></output></div>
+    <div id="settings">
+      <h2 id="setHead">Settings</h2>
+      <div class="ctl" data-views="gpu,v2,v3"><span>Line / paper</span><span><input type="color" id="fg" value="#d23219"> <input type="color" id="bg" value="#f2f0ee"></span><span></span></div>
+      <div class="ctl" data-views="gpu"><span>Stroke px</span><input type="range" id="stroke" min="1" max="6" step="0.25" value="4.75"><output></output></div>
+      <div class="ctl" data-views="gpu,bit8"><span>Rmin</span><input type="range" id="rmin" min="2.5" max="6" step="0.05" value="3.05"><output></output></div>
+      <div class="ctl" data-views="gpu,bit8"><span>Rmax</span><input type="range" id="rmax" min="10" max="30" step="0.25" value="13.75"><output></output></div>
+      <div class="ctl" data-views="gpu,bit8"><span>Gain</span><input type="range" id="gain" min="1" max="2.5" step="0.05" value="1.75"><output></output></div>
+      <div class="ctl" data-views="gpu,bit8"><span>Noise</span><input type="range" id="noise" min="0" max="0.4" step="0.01" value="0.22"><output></output></div>
+      <div class="ctl" data-views="gpu,bit8"><span>Steps/frame</span><input type="range" id="iters" min="1" max="12" step="1" value="6"><output></output></div>
+      <div class="ctl" data-views="bit8"><span>Pixel size</span><input type="range" id="px" min="3" max="12" step="1" value="6"><output></output></div>
+      <div class="ctl" data-views="v2"><span>Spacing</span><input type="range" id="v2s" min="8" max="40" step="1" value="16"><output></output></div>
+      <div class="ctl" data-views="v2"><span>Relief</span><input type="range" id="v2r" min="0" max="160" step="2" value="70"><output></output></div>
+      <div class="ctl" data-views="v2"><span>Thin line</span><input type="range" id="v2a" min="0.02" max="0.4" step="0.01" value="0.08"><output></output></div>
+      <div class="ctl" data-views="v2"><span>Thick line</span><input type="range" id="v2b" min="0.5" max="1" step="0.01" value="0.9"><output></output></div>
+      <div class="ctl" data-views="v2"><span>Foreground</span><select id="v2m"><option value="0">Relief (curved)</option><option value="2">Straight (flat)</option></select><span></span></div>
+      <div class="ctl" data-views="v3"><span>Hatch px</span><input type="range" id="v3s" min="3" max="16" step="0.5" value="7"><output></output></div>
+      <div class="ctl" data-views="v3"><span>Dot px</span><input type="range" id="v3d" min="4" max="18" step="0.5" value="8"><output></output></div>
+      <div class="ctl" data-views="v3"><span>Form</span><input type="range" id="v3r" min="0" max="80" step="1" value="20"><output></output></div>
+      <div class="ctl" data-views="v3"><span>Angle</span><input type="range" id="v3a" min="0" max="90" step="1" value="30"><output></output></div>
     </div>
     <div>
-      <h2>Solver</h2>
-      <div class="ctl"><span>Rmin</span><input type="range" id="rmin" min="2.5" max="6" step="0.05" value="3.05"><output></output></div>
-      <div class="ctl"><span>Rmax</span><input type="range" id="rmax" min="10" max="30" step="0.25" value="13.75"><output></output></div>
-      <div class="ctl"><span>Gain</span><input type="range" id="gain" min="1" max="2.5" step="0.05" value="1.75"><output></output></div>
-      <div class="ctl"><span>Noise</span><input type="range" id="noise" min="0" max="0.4" step="0.01" value="0.22"><output></output></div>
-      <div class="ctl"><span>Steps/frame</span><input type="range" id="iters" min="1" max="12" step="1" value="6"><output></output></div>
-      <div class="ctl"><span>Subject</span><select id="subject"><option value="0">Off</option><option value="1" selected>Subject only</option><option value="2">Background only</option></select><span></span></div>
+      <h2>Input</h2>
+      <div class="ctl" data-views="gpu,bit8"><span>Subject</span><select id="subject"><option value="0">Off</option><option value="1" selected>Subject only</option><option value="2">Background only</option></select><span></span></div>
       <label class="note"><input type="checkbox" id="mirror" checked> mirror camera</label><br>
       <label class="note"><input type="checkbox" id="key"> key out red (red background only)</label>
     </div>
