@@ -626,6 +626,75 @@ fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
   let L = q.b.x;
   let warp = q.e.x;
   let n = i32(N);
+  if (q.e.y > 4.5) {
+    // volume: layers of cubes of growing size over the finest grid. Inside the subject a random share of the cubes of every size exists (random sizes),
+    // outside the subject the cubes follow the light but sit shifted off their lattice position, overlapping like a honeycomb pushed around on one layer
+    let s0 = q.a.z;
+    let top = i32(q.e.z);
+    var rcol = vec3f(0.0);
+    for (var L2 = 4; L2 >= 0; L2--) {
+      if (L2 > top) { continue; }
+      let Mk = s0*pow(q.f.x, f32(L2));
+      let off = lat(3*L2 + 3, 3*L2, s0);
+      let pk = pp - off;
+      let h = H3*Mk;
+      let al = pk.x/h; let be = (pk.y - al*Mk*0.5)/Mk;
+      let i0 = i32(floor(al)); let j0 = i32(floor(be));
+      var bestH = -1.0; var bestC = vec2f(0.0);
+      for (var di = -2; di <= 2; di++) {
+        for (var dj = -2; dj <= 2; dj++) {
+          let i = i0 + di; let j = j0 + dj;
+          if ((((i - j) % 3) + 3) % 3 != 0) { continue; }
+          let lp = lat(i, j, Mk);
+          let ca0 = off + lp;
+          let sp0 = toCanvas(ca0)*0.5;
+          let inner = bmk(sp0);
+          var jit = vec2f(0.0);
+          if (L2 > 0) {
+            jit = vec2f(hash2(i*13 + L2*7, j*17 + 3), hash2(i*19 + 5, j*11 + L2*9)) - vec2f(0.5);
+            jit = jit*2.0*Mk*q.f.y*(1.0 - inner);
+          }
+          let p2c = pk - lp - jit;
+          if (hexEdge(p2c, Mk) < 0.0) { continue; }
+          let hp = hash2(i*3 + L2*101, j*5 + 77);
+          if (L2 > 0) {
+            var ex = true;
+            if (inner > 0.5 && q.f.z > 0.001) {
+              ex = hash2(i*3 + 1 + L2*101, j*5 + 2 + L2*57) < q.f.z*0.5/(1.0 + 0.3*f32(L2));
+            } else {
+              let ca = ca0 + jit;
+              let rr = Mk*0.5;
+              let dm = (darkAt(ca) + darkAt(ca + vec2f(rr, 0.0)) + darkAt(ca - vec2f(rr, 0.0)) + darkAt(ca + vec2f(0.0, rr)) + darkAt(ca - vec2f(0.0, rr)))*0.2;
+              let jt2 = (hash2(i*3 + 1 + L2*101, j*5 + 2 + L2*57) - 0.5)*0.2;
+              let thr = (f32(L2)/(f32(top) + 1.0))*(1.6 - 1.2*q.e.w);
+              ex = !(1.0 - dm < thr + jt2);
+            }
+            if (!ex) { continue; }
+          }
+          if (hp > bestH) { bestH = hp; bestC = lp + jit; }
+        }
+      }
+      if (bestH < 0.0) { continue; }
+      let ctr = bestC;
+      let id = vec2i(i32(round(ctr.x/(H3*Mk))), i32(round(ctr.y/(Mk*0.5))));
+      let p2 = pk - ctr;
+      let c2 = cellAt(p2, Mk);
+      let cen2 = off + ctr + c2.o + (c2.e1 + c2.e2)*0.5;
+      let dk = darkAt(cen2);
+      var rtone = 0.80;
+      if (c2.kind == 0) { rtone = 0.60; } else if (c2.kind == 2) { rtone = 0.94; }
+      if (c2.kind != 1 && hash2(id.x*7 + L2, id.y*11 + c2.kind) < q.b.z) { rtone = 1.54 - rtone; }
+      let rval = clamp(rtone - q.b.y*dk, 0.0, 1.0);
+      let cc = mix(q.c.rgb, q.d.rgb, rval);
+      let lw2 = q.d.w;
+      let ru = min(c2.u, 1.0 - c2.u)/c2.gu; let rv = min(c2.v, 1.0 - c2.v)/c2.gv;
+      var rink = max(cov(ru, lw2*1.5), cov(rv, lw2*1.5));
+      rink = max(rink, cov(hexEdge(p2, Mk), lw2*2.0));
+      rcol = mix(cc, q.c.rgb, clamp(rink, 0.0, 1.0));
+      break;
+    }
+    return vec4f(rcol, 1.0);
+  }
   if (q.e.y > 3.5) {
     // small to big: the finest cube grid covers everything, then layers of bigger cubes (each one a set ratio bigger than the one below) are laid over it.
     // On every layer a random share of the cubes exists; the biggest layer wins, so big cubes cover the small ones around them
@@ -1349,7 +1418,7 @@ function encodeV2(enc, bill = false) {
 
 function encodeV4(enc) {
   const rgb = (c) => c.map((x) => x / 255);
-  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, P.v4r, P.v4c, P.v4q, 0, 0, 0]));
+  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, P.v4r, P.v4c, P.v4q, P.v4j, P.v4z, 0]));
   const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
@@ -1551,7 +1620,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1676,7 +1745,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
