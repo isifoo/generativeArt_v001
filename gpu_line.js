@@ -477,70 +477,29 @@ ${bilFn('bhl', 'hl')}
   let S = q.a.z; let uv = f.xy; let p = uv*0.5;
   let d = bst(p);
   let dd = clamp(d*1.6 - 0.08, 0.0, 1.0);
-  let fr = mix(q.b.y, q.b.z, pow(dd, 0.8));          // line weight as a fraction of the spacing: thin in light, thick in dark
-  let m = smoothstep(0.3, 0.7, bhs(p));               // subject weight
+  let bill = q.c.w > 0.5;
+  let zone = max(q.b.w, 0.01);
+  let t = smoothstep(0.0, zone, dd);                  // 0 in the brightest areas, 1 once lines run continuous
+  var fr = mix(q.b.y, q.b.z, pow(dd, 0.8));           // line weight as a fraction of the spacing: thin in light, thick in dark
+  if (bill) { fr = mix(max(fr, 0.14), fr, t); }       // brightest areas: points
   var v = uv.y/S;
   if (q.b.x < 0.5) { v = (uv.y + q.a.w*bhl(p))/S; }   // relief: rows ride up over the subject
-  else if (q.b.x < 1.5) { v = mix(uv.y/S, (1.0 - bhl(p))*q.b.w, m); }   // contours: rows follow the silhouette
   let fw = max(fwidth(v), 1e-4);
-  let a = clamp((fr*0.5 - abs(fract(v) - 0.5))/fw + 0.5, 0.0, 1.0);
+  var a = clamp((fr*0.5 - abs(fract(v) - 0.5))/fw + 0.5, 0.0, 1.0);
+  a = min(a, clamp(fr/fw, 0.0, 1.0));
+  if (bill) {
+    let un = uv.x/q.d.w;                              // position along the row, in dash periods
+    let fx = max(fwidth(un), 1e-4);
+    let row = floor(v);
+    let u = un + fract(row*0.618034);                 // stagger neighbouring rows
+    let onf = mix(0.14*S/q.d.w, 1.0, t);              // dash length: a dot at the brightest, whole line at the edge of the zone
+    let da = clamp((onf*0.5 - abs(fract(u) - 0.5))/fx + 0.5, 0.0, 1.0);
+    a = a*select(da, 1.0, onf > 0.999);
+  }
   return vec4f(mix(q.d.rgb, q.c.rgb, a), 1.0);
 }
 `;
 
-const DRAWV3 = /* wgsl */`
-struct V3 { a:vec4f, b:vec4f, c:vec4f, d:vec4f };
-@group(0) @binding(0) var<uniform> q:V3;
-@group(0) @binding(1) var<storage, read> st: array<f32>;
-@group(0) @binding(2) var<storage, read> hs: array<f32>;
-@group(0) @binding(3) var<storage, read> ht: array<f32>;
-${bilFn('bst', 'st')}
-${bilFn('bhs', 'hs')}
-${bilFn('bht', 'ht')}
-fn pcg(v:u32)->u32 { let s = v*747796405u + 2891336289u; let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
-fn h3(c:vec2f)->vec3f {
-  let a = pcg((bitcast<u32>(i32(c.x))*1597334673u) ^ (bitcast<u32>(i32(c.y))*3812015801u));
-  let b = pcg(a); let d = pcg(b);
-  return vec3f(f32(a), f32(b), f32(d))*(1.0/4294967296.0);
-}
-fn hatch(v:f32, fr:f32)->f32 {
-  let fw = max(fwidth(v), 1e-4);
-  let a = clamp((fr*0.5 - abs(fract(v) - 0.5))/fw + 0.5, 0.0, 1.0);
-  return min(a, clamp(fr/fw, 0.0, 1.0));
-}
-@vertex fn vs(@builtin(vertex_index) i:u32) -> @builtin(position) vec4f {
-  let p = array<vec2f,3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
-  return vec4f(p[i], 0.0, 1.0);
-}
-@fragment fn fs(@builtin(position) f:vec4f) -> @location(0) vec4f {
-  let S = q.a.z; let uv = f.xy; let p = uv*0.5;
-  var dd = clamp(bst(p)*1.6 - 0.08, 0.0, 1.0);
-  let m = smoothstep(0.3, 0.7, bhs(p));
-  dd = mix(dd*0.5, dd, m);                             // background sits lighter than the subject
-  let relief = q.a.w*bht(p);                           // strokes bend with the form
-  let ang = q.b.x;
-  let v1 = (uv.x*sin(ang) + uv.y*cos(ang) + relief)/S;
-  let fr1 = 0.92*pow(clamp((dd - 0.18)/0.82, 0.0, 1.0), 0.85);
-  var ink = hatch(v1, fr1);
-  let ang2 = ang + 1.0;
-  let v2 = (uv.x*sin(ang2) + uv.y*cos(ang2) + 0.6*relief)/S;
-  let fr2 = 0.8*clamp((dd - 0.62)/0.38, 0.0, 1.0);     // second direction only in the darkest tones
-  ink = max(ink, hatch(v2, fr2));
-  let D = q.b.y;
-  let cov = clamp(dd/0.6, 0.0, 1.0)*(1.0 - smoothstep(0.4, 0.7, dd));   // dots fade out as hatching takes over
-  if (cov > 0.0) {
-    let cell = floor(uv/D);
-    for (var j = -1; j <= 1; j++) { for (var i = -1; i <= 1; i++) {
-      let c = cell + vec2f(f32(i), f32(j));
-      let r = h3(c);
-      let ctr = (c + vec2f(0.2) + r.xy*0.6)*D;
-      let rad = D*0.46*sqrt(cov)*(0.75 + 0.5*r.z);
-      ink = max(ink, clamp(rad - length(uv - ctr) + 0.5, 0.0, 1.0));
-    } }
-  }
-  return vec4f(mix(q.d.rgb, q.c.rgb, ink), 1.0);
-}
-`;
 const BLIT = /* wgsl */`
 struct BU { ps:vec4f };
 @group(0) @binding(0) var low: texture_2d<f32>;
@@ -610,12 +569,13 @@ const pipeBlit = device.createRenderPipeline({ layout: 'auto', vertex: { module:
   fragment: { module: mBlit, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' } });
 const mV2 = device.createShaderModule({ code: DRAWV2 });
 mV2.getCompilationInfo().then((ci) => { for (const m of ci.messages) if (m.type === 'error') msg(`V2 shader line ${m.lineNum}: ${m.message}`); });
-const pipeV2 = device.createRenderPipeline({ layout: 'auto', vertex: { module: mV2, entryPoint: 'vs' },
+const v2bgl = device.createBindGroupLayout({ entries: [
+  { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+  { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+  { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+  { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }] });
+const pipeV2 = device.createRenderPipeline({ layout: device.createPipelineLayout({ bindGroupLayouts: [v2bgl] }), vertex: { module: mV2, entryPoint: 'vs' },
   fragment: { module: mV2, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' } });
-const mV3 = device.createShaderModule({ code: DRAWV3 });
-mV3.getCompilationInfo().then((ci) => { for (const m of ci.messages) if (m.type === 'error') msg(`V3 shader line ${m.lineNum}: ${m.message}`); });
-const pipeV3 = device.createRenderPipeline({ layout: 'auto', vertex: { module: mV3, entryPoint: 'vs' },
-  fragment: { module: mV3, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' } });
 let low = null;     // low-res target, rebuilt when the pixel size changes
 function ensureLow(ps) {
   if (low && low.ps === ps) return low;
@@ -639,7 +599,7 @@ const B = {
   gray: mk(F32, S), keyr: mk(F32, S), keyA: mk(F32, S), keyB: mk(F32, S), keyC: mk(F32, S),
   lut: mk(36 * 256 * 4, S), hist2: mk(256 * 4, S | CD), stretch: mk(16, S),
   cl: mk(F32, S), dg: mk(F32, S), dtmp: mk(F32, S), dgb: mk(F32, S),
-  mask: mk(F32, S | CD), hS: mk(F32, S), hT: mk(F32, S), v3u: mk(64, GPUBufferUsage.UNIFORM | CD), hL: mk(F32, S), v2u: mk(64, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
+  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(64, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
   na: mk(NGW * NGH * 4, S | CD), nb: mk(NGW * NGH * 4, S | CD),
   meta: mk(16, S | CD | CSRC), args: mk(48, S | GPUBufferUsage.INDIRECT | CD),
   pos: mk(MAXN * 8, S | CD), mv: mk(MAXN * 16, S), head: mk(GW * GH * 4, S), nxt: mk(MAXN * 4, S),
@@ -650,7 +610,6 @@ const B = {
 const bu = (a) => { const b = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | CD }); device.queue.writeBuffer(b, 0, new Float32Array(a)); return b; };
 const BU = {
   keyH4: bu([4, 1, 12, 0]), keyV4: bu([4, 0, 12, 0]), keyH25: bu([2.5, 1, 8, 1]), keyV25: bu([2.5, 0, 8, 0]),
-  htH: bu([4, 1, 12, 0]), htV: bu([4, 0, 12, 0]),
   hsH: bu([6, 1, 18, 1]), hsV: bu([6, 0, 18, 0]), hlH: bu([20, 1, 60, 1]), hlV: bu([20, 0, 60, 0]),
   darkH: bu([3.5, 1, 11, 0]), darkV: bu([3.5, 0, 11, 0]), dilH: bu([0, 1, 18, 0]), dilV: bu([0, 0, 18, 0]),
 };
@@ -674,7 +633,6 @@ const G = {
   dilH: bg(K.dilate, [B.wake, B.wakeT, BU.dilH]), dilV: bg(K.dilate, [B.wakeT, B.wakeD, BU.dilV]),
   hsH: bg(K.blur, [B.mask, B.dtmp, BU.hsH]), hsV: bg(K.blur, [B.dtmp, B.hS, BU.hsV]),
   hlH: bg(K.blur, [B.mask, B.dtmp, BU.hlH]), hlV: bg(K.blur, [B.dtmp, B.hL, BU.hlV]),
-  htH: bg(K.blur, [B.state, B.dtmp, BU.htH]), htV: bg(K.blur, [B.dtmp, B.hT, BU.htV]),
   gridclear: bg(K.gridclear, [B.head]),
   gridbuild: bg(K.gridbuild, [B.meta, B.pos, B.head, B.nxt]),
   forces: bg(K.forces, [B.u, B.meta, B.pos, B.head, B.nxt, B.R, B.wakeD, B.mv]),
@@ -688,10 +646,8 @@ const G = {
 const drawBG = device.createBindGroup({ layout: drawPipe.getBindGroupLayout(0),
   entries: [{ binding: 0, resource: { buffer: B.du } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }] });
 
-const drawV2BG = device.createBindGroup({ layout: pipeV2.getBindGroupLayout(0),
+const drawV2BG = device.createBindGroup({ layout: v2bgl,
   entries: [{ binding: 0, resource: { buffer: B.v2u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.hS } }, { binding: 3, resource: { buffer: B.hL } }] });
-const drawV3BG = device.createBindGroup({ layout: pipeV3.getBindGroupLayout(0),
-  entries: [{ binding: 0, resource: { buffer: B.v3u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.hS } }, { binding: 3, resource: { buffer: B.hT } }] });
 const draw8BG = device.createBindGroup({ layout: pipe8.getBindGroupLayout(0),
   entries: [{ binding: 0, resource: { buffer: B.du8 } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }, { binding: 3, resource: { buffer: B.state } }] });
 
@@ -719,7 +675,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v3s: 7, v3d: 8, v3r: 20, v3a: 30,
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v3s: 12, v3r: 70, v3a: 0.035, v3b: 0.45, v3d: 14, v3z: 0.22,
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -889,30 +845,21 @@ function encodeDraw(enc) {
 
 
 
-function encodeV2(enc) {
+function encodeV2(enc, bill = false) {
   const im = [Math.ceil(SW / 16), Math.ceil(SH / 16)];
   run(enc, 'blur', G.hsH, im, 'v2: subject shape'); run(enc, 'blur', G.hsV, im, 'v2: subject shape');
   run(enc, 'blur', G.hlH, im, 'v2: subject shape'); run(enc, 'blur', G.hlV, im, 'v2: subject shape');
   const rgb = (c) => c.map((x) => x / 255);
-  device.queue.writeBuffer(B.v2u, 0, new Float32Array([OW, OH, P.v2s, P.v2r, P.v2m, P.v2a, P.v2b, 14, ...rgb(P.fg), 1, ...rgb(P.bgc), 1]));
+  const u = bill
+    ? [OW, OH, P.v3s, P.v3r, P.v2m, P.v3a, P.v3b, P.v3z, 0, 0, 0, 1, 1, 1, 1, P.v3d]
+    : [OW, OH, P.v2s, P.v2r, P.v2m, P.v2a, P.v2b, 0, ...rgb(P.fg), 0, ...rgb(P.bgc), 1];
+  device.queue.writeBuffer(B.v2u, 0, new Float32Array(u));
   const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
   p.setPipeline(pipeV2); p.setBindGroup(0, drawV2BG); p.draw(3); p.end();
 }
 
-
-function encodeV3(enc) {
-  const im = [Math.ceil(SW / 16), Math.ceil(SH / 16)];
-  run(enc, 'blur', G.hsH, im, 'v3: subject + form'); run(enc, 'blur', G.hsV, im, 'v3: subject + form');
-  run(enc, 'blur', G.htH, im, 'v3: subject + form'); run(enc, 'blur', G.htV, im, 'v3: subject + form');
-  const rgb = (c) => c.map((x) => x / 255);
-  device.queue.writeBuffer(B.v3u, 0, new Float32Array([OW, OH, P.v3s, P.v3r, P.v3a * Math.PI / 180, P.v3d, 0, 0, ...rgb(P.fg), 1, ...rgb(P.bgc), 1]));
-  const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
-  if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
-  const p = enc.beginRenderPass(d);
-  p.setPipeline(pipeV3); p.setBindGroup(0, drawV3BG); p.draw(3); p.end();
-}
 
 function drawBit8(enc) {
   const L = ensureLow(P.px);
@@ -940,8 +887,7 @@ async function tick({ full = false, steps = null, wait = false } = {}) {
   const enc = device.createCommandEncoder();
   timing = true;
   encodeField(enc);
-  if (sim.view === 'v2') { encodeV2(enc); return finishTick(enc, tUp, t1, false); }
-  if (sim.view === 'v3') { encodeV3(enc); return finishTick(enc, tUp, t1, false); }
+  if (sim.view === 'v2' || sim.view === 'v3') { encodeV2(enc, sim.view === 'v3'); return finishTick(enc, tUp, t1, false); }
   const nIter = steps ?? (sim.boost > 0 ? P.iters * 2 : P.iters);
   if (!sim.warmed) {
     sim.warmed = true;
@@ -1100,7 +1046,7 @@ for (const v of versions) {
   const b = document.createElement('button'); b.textContent = v.label; b.dataset.id = v.id;
   b.onclick = () => setView(v.id); $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v3s: 'v3s', v3d: 'v3d', v3r: 'v3r', v3a: 'v3a' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1127,24 +1073,26 @@ let benchRunning = false;
 const pct = (arr, p) => { const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const mean = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
 async function seekTo(t) {
-  await new Promise((res) => { const h = () => { vid.removeEventListener('seeked', h); res(); }; vid.addEventListener('seeked', h); vid.currentTime = t; });
+  await new Promise((res) => { const h = () => { vid.removeEventListener('seeked', h); res(); }; vid.addEventListener('seeked', h); vid.currentTime = t; setTimeout(res, 1500); });
 }
 async function benchmark() {
-  benchRunning = true; $('#bench').disabled = true;
   const note = $('#benchnote');
+  if (vid.readyState < 2) { note.textContent = 'Benchmark needs a source: turn the camera on or load a video first.'; return; }
+  const live = !!camStream || !isFinite(vid.duration);      // camera: run live frames instead of seeking a file
+  benchRunning = true; $('#bench').disabled = true;
   const wasView = sim.view; if (wasView === 'src') setView('gpu');
-  vid.pause();
-  const frames = Math.max(1, Math.floor(vid.duration * FPS));
+  if (!live) vid.pause();
+  const frames = live ? 210 : Math.max(1, Math.floor(vid.duration * FPS));
   note.textContent = 'Benchmark: warm-up frame...';
   resetSim();
-  await seekTo(0);
+  if (!live) await seekTo(0);
   const tw0 = performance.now();
   await tick();                                         // first frame incl. 150 warm-up steps
   await device.queue.onSubmittedWorkDone();
   const warmMs = performance.now() - tw0;
   const rec = [];
   for (let f = 1; f < frames; f++) {
-    await seekTo(f / FPS + 0.0005);
+    if (live) await new Promise((r) => setTimeout(r, 33)); else await seekTo(f / FPS + 0.0005);
     const r = await tick();
     if (r) rec.push(r);
     if (f % 15 === 0) note.textContent = `Benchmark: frame ${f}/${frames}`;
@@ -1170,7 +1118,7 @@ async function benchmark() {
   const span = rec.map((r) => r.span), sum = rec.map((r) => r.sum);
   const result = {
     when: new Date().toISOString(), gpu: GPU_NAME, userAgent: navigator.userAgent,
-    clip: { frames, fps: FPS, sim_size: `${SW}x${SH}`, output_size: `${OW}x${OH}` },
+    clip: { frames, live, fps: FPS, sim_size: `${SW}x${SH}`, output_size: `${OW}x${OH}` },
     settings: { ...P, warm_steps: WARM_STEPS },
     timestamps: { supported: hasTS, quantized_100us: rec.some((r) => r.quant) },
     first_frame_ms_wall: warmMs,
@@ -1194,7 +1142,8 @@ async function benchmark() {
     `per frame GPU span: mean ${fx(mean(span))} ms, p95 ${fx(pct(span, .95))} ms, max ${fx(Math.max(...span))} ms (budget ${fx(1000 / FPS)} ms)<br>` +
     `worst case, all points awake: ${fx(worstMs)} ms per frame = ${(1000 / worstMs).toFixed(0)} fps<br>` +
     (saved ? `saved to bench/${name}` : 'could not save to bench/ (open via serve.py); result is in window.__bench');
-  vid.play(); setView(wasView); benchRunning = false; $('#bench').disabled = false;
+  if (!live) vid.play();
+  setView(wasView); benchRunning = false; $('#bench').disabled = false;
   return result;
 }
 $('#bench').onclick = benchmark;
@@ -1212,3 +1161,4 @@ window.__dbg = async (name, count = 64, off = 0) => {
   await st.mapAsync(GPUMapMode.READ); const a = new Float32Array(st.getMappedRange().slice(0)); st.unmap(); st.destroy();
   return Array.from(a.slice(off, off + count));
 };
+window.__device = device;
