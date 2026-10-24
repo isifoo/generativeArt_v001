@@ -1221,3 +1221,19 @@ window.__dbg = async (name, count = 64, off = 0) => {
   return Array.from(a.slice(off, off + count));
 };
 window.__device = device;
+
+// ---------------------------------------------------------------- version check
+{
+  const mine = document.querySelector('meta[name=build]')?.content || '';
+  const badge = $('#ver');
+  if (mine.startsWith('__')) badge.textContent = 'dev (local)';
+  else {
+    const check = async () => {
+      try {
+        const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); const v = await r.json();
+        if (v.build !== mine) { $('#newver').hidden = false; $('#newver').onclick = () => location.reload(); }
+      } catch {}
+    };
+    check(); setInterval(check, 30000);
+  }
+}
