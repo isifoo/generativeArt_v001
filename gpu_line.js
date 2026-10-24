@@ -695,7 +695,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, v3auto: true, v3c: [215, 212, 212],
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: 'mp', v3auto: true, v3c: [215, 212, 212],
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -821,7 +821,67 @@ function trackBox(m) {
   const k = box.init ? 0.12 : 1; box.init = true;
   box.x0 += (x0 - box.x0) * k; box.x1 += (x1 - box.x1) * k; box.y0 += (y0 - box.y0) * k; box.y1 += (y1 - box.y1) * k;
 }
+function pushMask(a) {
+  if (sim.view === 'v2' || sim.view === 'v3') {            // temporal smoothing of the subject mask: kills the flicker
+    if (!seg.cur) { seg.cur = new Float32Array(SW * SH); seg.cur.set(a); }
+    const s = P.smodel === 'rvm' ? P.v3m * 0.5 : P.v3m, n = SW * SH, cur = seg.cur;   // the matting model is already temporally stable
+    for (let i = 0; i < n; i++) cur[i] = cur[i] * s + a[i] * (1 - s);
+    a = cur;
+    if (sim.view === 'v3') trackBox(a);
+  }
+  device.queue.writeBuffer(B.mask, 0, a);
+}
+
+// ---------------------------------------------------------------- Robust Video Matting (onnxruntime-web, recurrent, WebGPU)
+const rvm = { ready: false, loading: false, busy: false, sess: null, ort: null, st: null, ms: 0, ep: '', w: LAND ? 512 : 288, h: LAND ? 288 : 512 };
+const rcv = document.createElement('canvas'); rcv.width = rvm.w; rcv.height = rvm.h;
+const rctx = rcv.getContext('2d', { willReadFrequently: true });
+async function loadRvm() {
+  if (rvm.ready || rvm.loading) return;
+  rvm.loading = true; msg('Loading matting model (about 37 MB, first time only)...');
+  try {
+    const ort = await import('./vendor/ort/ort.webgpu.min.mjs');
+    ort.env.wasm.wasmPaths = new URL('./vendor/ort/', location.href).href;
+    ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false;
+    let sess = null;
+    for (const ep of ['webgpu', 'wasm']) {
+      try { sess = await ort.InferenceSession.create('vendor/rvm_mobilenetv3_fp32.onnx', { executionProviders: [ep] }); rvm.ep = ep; break; }
+      catch (e) { if (ep === 'wasm') throw e; }
+    }
+    rvm.ort = ort; rvm.sess = sess;
+    rvm.zero = () => new ort.Tensor('float32', new Float32Array(1), [1, 1, 1, 1]);
+    rvm.st = [rvm.zero(), rvm.zero(), rvm.zero(), rvm.zero()];
+    rvm.ratio = new ort.Tensor('float32', new Float32Array([0.5]), [1]);
+    rvm.ready = true; msg('');
+  } catch (e) { msg('Matting model failed: ' + e.message); P.smodel = 'mp'; $('#smodel').value = 'mp'; }
+  rvm.loading = false;
+}
+function rvmKick() {
+  if (!rvm.ready || rvm.busy) return;
+  rvm.busy = true;
+  const t0 = performance.now(), { w, h, ort } = rvm;
+  rctx.drawImage(cv2, 0, 0, w, h);
+  const d = rctx.getImageData(0, 0, w, h).data, n = w * h, f = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+  rvm.sess.run({ src: new ort.Tensor('float32', f, [1, 3, h, w]), r1i: rvm.st[0], r2i: rvm.st[1], r3i: rvm.st[2], r4i: rvm.st[3], downsample_ratio: rvm.ratio })
+    .then(async (o) => {
+      rvm.st = [o.r1o, o.r2o, o.r3o, o.r4o];
+      const p = o.pha.data ?? await o.pha.getData();
+      const a = new Float32Array(SW * SH);                  // bilinear up to the sim size
+      for (let y = 0; y < SH; y++) {
+        const fy = Math.min(h - 1.001, Math.max(0, (y + 0.5) * h / SH - 0.5)), y0 = fy | 0, ty = fy - y0;
+        for (let x = 0; x < SW; x++) {
+          const fx = Math.min(w - 1.001, Math.max(0, (x + 0.5) * w / SW - 0.5)), x0 = fx | 0, tx = fx - x0, i = y0 * w + x0;
+          a[y * SW + x] = (p[i] * (1 - tx) + p[i + 1] * tx) * (1 - ty) + (p[i + w] * (1 - tx) + p[i + w + 1] * tx) * ty;
+        }
+      }
+      pushMask(a); rvm.ms = performance.now() - t0; seg.ms = rvm.ms;
+    })
+    .catch((e) => { msg('Matting run failed: ' + e.message); P.smodel = 'mp'; $('#smodel').value = 'mp'; })
+    .finally(() => { rvm.busy = false; });
+}
 function segment() {
+  if (P.smodel === 'rvm' && (sim.view === 'v2' || sim.view === 'v3')) { rvmKick(); return; }
   if (!seg.ready || (P.subject === 0 && sim.view !== 'v2' && sim.view !== 'v3')) { seg.ms = 0; return; }
   const t0 = performance.now();
   seg.ts = Math.max(seg.ts + 1, Math.round(performance.now()));
@@ -833,14 +893,7 @@ function segment() {
     for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) b[y * SW + x] = a[Math.floor(y * m.height / SH) * m.width + Math.floor(x * m.width / SW)];
     a = b;
   }
-  if (sim.view === 'v2' || sim.view === 'v3') {            // temporal smoothing of the subject mask: kills the flicker
-    if (!seg.cur) { seg.cur = new Float32Array(SW * SH); seg.cur.set(a); }
-    const s = P.v3m, n = SW * SH, cur = seg.cur;
-    for (let i = 0; i < n; i++) cur[i] = cur[i] * s + a[i] * (1 - s);
-    a = cur;
-    if (sim.view === 'v3') trackBox(a);
-  }
-  device.queue.writeBuffer(B.mask, 0, a);
+  pushMask(a);
   seg.w = m.width; seg.h = m.height;
   m.close(); r.close && r.close();
   seg.ms = performance.now() - t0;
@@ -1133,6 +1186,7 @@ $('#mirror').onchange = (e) => { P.mirror = e.target.checked; if (camStream) vid
 $('#subject').onchange = async (e) => { P.subject = parseInt(e.target.value); if (P.subject) await loadSegmenter(); sim.boost = 8; };
 $('#key').onchange = (e) => { P.key = e.target.checked; sim.boost = 6; };
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+$('#smodel').onchange = async (e) => { P.smodel = e.target.value; if (P.smodel === 'rvm') await loadRvm(); };
 $('#v3auto').onchange = (e) => { P.v3auto = e.target.checked; };
 $('#v3c').oninput = (e) => { P.v3c = hex(e.target.value); };
 $('#fg').oninput = (e) => { P.fg = hex(e.target.value); };
@@ -1228,7 +1282,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3c', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
@@ -1292,3 +1346,4 @@ window.__device = device;
   }
 }
 
+window.__rvm = rvm;

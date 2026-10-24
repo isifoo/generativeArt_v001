@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261024134646">
+<meta name="build" content="20261024140420">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.7 (2026-10-24 13:46)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.8 (2026-10-24 14:04)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -95,6 +95,7 @@
     <div>
       <h2>Input</h2>
       <div class="ctl" data-views="gpu,bit8"><span>Subject</span><select id="subject"><option value="0">Off</option><option value="1" selected>Subject only</option><option value="2">Background only</option></select><span></span></div>
+      <div class="ctl" data-views="v2,v3"><span>Subject model</span><select id="smodel"><option value="mp" selected>MediaPipe selfie (fast)</option><option value="rvm">Robust Video Matting (steady)</option></select><span></span></div>
       <label class="note"><input type="checkbox" id="mirror" checked> mirror camera</label><br>
       <label class="note"><input type="checkbox" id="key"> key out red (red background only)</label>
     </div>
@@ -112,6 +113,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261024134646"></script>
+<script type="module" src="gpu_line.js?b=20261024140420"></script>
 </body>
 </html>
