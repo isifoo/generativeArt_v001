@@ -1027,7 +1027,7 @@ const versions = [
   { id: 'src', label: 'Source video' },
   { id: 'gpu', label: 'V1 Line' },
   { id: 'v2', label: 'V2 Line' },
-  { id: 'v3', label: '100$ bill' },
+  { id: 'v3', label: 'V3 100$' },
   { id: 'bit8', label: '8 bit' },
 ];
 function setView(id) {
@@ -1150,7 +1150,35 @@ $('#bench').onclick = benchmark;
 window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P };
 
 // ---------------------------------------------------------------- go
-setView('gpu');
+const STORE = 'lineGpuDefaults.v1';
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'fg', 'bg', 'subject'];
+const SAVE_CB = ['mirror', 'key'];
+function snapshotSettings() {
+  const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {} };
+  SAVE_IDS.forEach((id) => { o.v[id] = $('#' + id).value; });
+  SAVE_CB.forEach((id) => { o.c[id] = $('#' + id).checked; });
+  return o;
+}
+function applySettings(o) {
+  for (const [id, val] of Object.entries(o.v || {})) {
+    const el = $('#' + id); if (!el) continue;
+    el.value = val; el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input'));
+  }
+  for (const [id, val] of Object.entries(o.c || {})) {
+    const el = $('#' + id); if (!el) continue;
+    el.checked = val; el.dispatchEvent(new Event('change'));
+  }
+}
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch {}
+if (saved) applySettings(saved);
+$('#setdef').onclick = () => {
+  try { localStorage.setItem(STORE, JSON.stringify(snapshotSettings())); $('#setdef').textContent = 'Saved as default'; }
+  catch { $('#setdef').textContent = 'Could not save'; }
+  setTimeout(() => { $('#setdef').textContent = 'Set default'; }, 1600);
+};
+$('#resetdef').onclick = () => { try { localStorage.removeItem(STORE); } catch {} location.reload(); };
+setView(saved && saved.view && versions.some((v) => v.id === saved.view) ? saved.view : 'gpu');
 await start();
 loadSegmenter();
 await startCamera();
