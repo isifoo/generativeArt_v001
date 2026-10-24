@@ -700,7 +700,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0.08, v3k: 1.4, v3w: 0.7, v3f: -2, v3c: [215, 212, 212],
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 0.7, v3f: -1.2, v3m: 0.6, v3auto: true, v3c: [215, 212, 212],
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -816,6 +816,17 @@ async function loadSegmenter() {
   } catch (e) { msg('Segmenter failed: ' + e.message); P.subject = 0; $('#subject').value = '0'; }
   seg.loading = false;
 }
+const box = { x0: 0, x1: SW, y0: 0, y1: SH, init: false };   // smoothed bounding box of the subject, sim px
+function trackBox(m) {
+  const cols = new Uint16Array(SW), rows = new Uint16Array(SH);
+  for (let y = 0; y < SH; y += 2) for (let x = 0; x < SW; x += 2) if (m[y * SW + x] > 0.5) { cols[x]++; rows[y]++; }
+  let x0 = -1, x1 = -1, y0 = -1, y1 = -1;
+  for (let x = 0; x < SW; x += 2) if (cols[x] > 2) { if (x0 < 0) x0 = x; x1 = x; }
+  for (let y = 0; y < SH; y += 2) if (rows[y] > 2) { if (y0 < 0) y0 = y; y1 = y; }
+  if (x0 < 0 || x1 - x0 < 40 || y1 - y0 < 40) return;
+  const k = box.init ? 0.12 : 1; box.init = true;
+  box.x0 += (x0 - box.x0) * k; box.x1 += (x1 - box.x1) * k; box.y0 += (y0 - box.y0) * k; box.y1 += (y1 - box.y1) * k;
+}
 function segment() {
   if (!seg.ready || (P.subject === 0 && sim.view !== 'v2' && sim.view !== 'v3')) { seg.ms = 0; return; }
   const t0 = performance.now();
@@ -827,6 +838,13 @@ function segment() {
     const b = new Float32Array(SW * SH);
     for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) b[y * SW + x] = a[Math.floor(y * m.height / SH) * m.width + Math.floor(x * m.width / SW)];
     a = b;
+  }
+  if (sim.view === 'v2' || sim.view === 'v3') {            // temporal smoothing of the subject mask: kills the flicker
+    if (!seg.cur) { seg.cur = new Float32Array(SW * SH); seg.cur.set(a); }
+    const s = P.v3m, n = SW * SH, cur = seg.cur;
+    for (let i = 0; i < n; i++) cur[i] = cur[i] * s + a[i] * (1 - s);
+    a = cur;
+    if (sim.view === 'v3') trackBox(a);
   }
   device.queue.writeBuffer(B.mask, 0, a);
   seg.w = m.width; seg.h = m.height;
@@ -884,10 +902,10 @@ function faceFeatures() {
       const h = hull(ids.map((i) => [lm[i].x * 135, lm[i].y * 240]));
       fctx.beginPath(); h.forEach((p, k) => (k ? fctx.lineTo(p[0], p[1]) : fctx.moveTo(p[0], p[1]))); fctx.closePath(); fctx.fill();
     }
-    fctx.filter = 'blur(1.5px)'; fctx.drawImage(fcv, 0, 0); fctx.filter = 'none';
+    fctx.filter = 'blur(2.5px)'; fctx.drawImage(fcv, 0, 0); fctx.filter = 'none';
   }
   const d = fctx.getImageData(0, 0, 135, 240).data;
-  for (let i = 0, n = 135 * 240; i < n; i++) faceBuf[i] = d[i * 4] / 255;
+  for (let i = 0, n = 135 * 240; i < n; i++) faceBuf[i] = faceBuf[i] * P.v3m + (d[i * 4] / 255) * (1 - P.v3m);
   device.queue.writeBuffer(B.face, 0, faceBuf);
   face.had = !!lm; face.ms = performance.now() - t0; face.det = tDet;
   r.close && r.close();
@@ -936,8 +954,16 @@ function encodeDraw(enc) {
 
 const BW = 2373, BH = 1012;                           // V3 100$ canvas = the bill image
 function billPanel() {
-  const ph = P.v3k*BH, z = ph/SH;
-  return [P.v3x*BW - SW*z/2, (BH - ph)/2 + P.v3y*BH, z, P.v3f];
+  if (!P.v3auto || !box.init) {
+    const ph = P.v3k*BH, z = ph/SH;
+    return [P.v3x*BW - SW*z/2, (BH - ph)/2 + P.v3y*BH, z, P.v3f];
+  }
+  // auto fit: scale the subject's bounding box into a target area of the bill, bottom aligned, centred on X
+  const th = 0.85*P.v3k*BH, tw = 0.34*P.v3k*BW;
+  const bw = Math.max(box.x1 - box.x0, 40), bh = Math.max(box.y1 - box.y0, 40);
+  const z = Math.min(tw/bw, th/bh);
+  const cx = P.v3x*BW, bottom = BH*(0.5 + P.v3y) + th/2;
+  return [cx - (box.x0 + bw/2)*z, bottom - box.y1*z, z, P.v3f];
 }
 function encodeV2(enc, bill = false) {
   const im = [Math.ceil(SW / 16), Math.ceil(SH / 16)];
@@ -1145,7 +1171,7 @@ for (const v of versions) {
   const b = document.createElement('button'); b.textContent = v.label; b.dataset.id = v.id;
   b.onclick = () => setView(v.id); $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3f: 'v3f', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3f: 'v3f', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1172,6 +1198,7 @@ $('#mirror').onchange = (e) => { P.mirror = e.target.checked; if (camStream) vid
 $('#subject').onchange = async (e) => { P.subject = parseInt(e.target.value); if (P.subject) await loadSegmenter(); sim.boost = 8; };
 $('#key').onchange = (e) => { P.key = e.target.checked; sim.boost = 6; };
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+$('#v3auto').onchange = (e) => { P.v3auto = e.target.checked; };
 $('#v3c').oninput = (e) => { P.v3c = hex(e.target.value); };
 $('#fg').oninput = (e) => { P.fg = hex(e.target.value); };
 $('#bg').oninput = (e) => { P.bgc = hex(e.target.value); };
@@ -1266,8 +1293,8 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3f', 'v3c', 'fg', 'bg', 'subject'];
-const SAVE_CB = ['mirror', 'key'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3f', 'v3c', 'fg', 'bg', 'subject'];
+const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
   for (const id of Object.keys(sliders)) o.l[id] = [$('#' + id).min, $('#' + id).max];
