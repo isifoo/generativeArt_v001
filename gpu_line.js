@@ -467,9 +467,11 @@ struct V2 { a:vec4f, b:vec4f, c:vec4f, d:vec4f, e:vec4f };
 @group(0) @binding(1) var<storage, read> st: array<f32>;
 @group(0) @binding(2) var<storage, read> hs: array<f32>;
 @group(0) @binding(3) var<storage, read> hl: array<f32>;
+@group(0) @binding(4) var<storage, read> mk: array<f32>;
 ${bilFn('bst', 'st')}
 ${bilFn('bhs', 'hs')}
 ${bilFn('bhl', 'hl')}
+${bilFn('bmk', 'mk')}
 
 @vertex fn vs(@builtin(vertex_index) i:u32) -> @builtin(position) vec4f {
   let p = array<vec2f,3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
@@ -513,7 +515,7 @@ ${bilFn('bhl', 'hl')}
   let hal = clamp(ow*0.5 + gap - abs(sd) + 0.5, 0.0, 1.0)*ol;
   a = max(a*(1.0 - hal), ao);
   if (bill) {                                         // only the subject gets lines, the rest stays transparent
-    let cover = clamp(sd + 0.5, 0.0, 1.0)*inb;
+    let cover = smoothstep(0.3, 0.7, bmk(p))*inb;          // follows the mask itself (soft matte), not the blurred shape
     return vec4f(mix(q.d.rgb, q.c.rgb, a)*cover, cover);   // opaque subject in the bill colour, lines on it
   }
   return vec4f(mix(q.d.rgb, q.c.rgb, a), 1.0);
@@ -593,7 +595,8 @@ const v2bgl = device.createBindGroupLayout({ entries: [
   { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
   { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
   { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-  { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }] });
+  { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+  { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }] });
 const pipeV2 = device.createRenderPipeline({ layout: device.createPipelineLayout({ bindGroupLayouts: [v2bgl] }), vertex: { module: mV2, entryPoint: 'vs' },
   fragment: { module: mV2, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' } });
 let low = null;     // low-res target, rebuilt when the pixel size changes
@@ -667,7 +670,7 @@ const drawBG = device.createBindGroup({ layout: drawPipe.getBindGroupLayout(0),
   entries: [{ binding: 0, resource: { buffer: B.du } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }] });
 
 const drawV2BG = device.createBindGroup({ layout: v2bgl,
-  entries: [{ binding: 0, resource: { buffer: B.v2u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.hS } }, { binding: 3, resource: { buffer: B.hL } }] });
+  entries: [{ binding: 0, resource: { buffer: B.v2u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.hS } }, { binding: 3, resource: { buffer: B.hL } }, { binding: 4, resource: { buffer: B.mask } }] });
 const draw8BG = device.createBindGroup({ layout: pipe8.getBindGroupLayout(0),
   entries: [{ binding: 0, resource: { buffer: B.du8 } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }, { binding: 3, resource: { buffer: B.state } }] });
 
@@ -695,7 +698,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: 'mp', v3auto: true, v3c: [215, 212, 212],
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: 'mp', rvmRes: 640, rvmRatio: 0.5, v3auto: true, v3c: [215, 212, 212],
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -771,18 +774,51 @@ let camStream = null;
 const cv2 = document.createElement('canvas'); cv2.width = SW; cv2.height = SH;
 const c2 = cv2.getContext('2d', { willReadFrequently: false });
 c2.imageSmoothingQuality = 'high';
+const vmap = { au: 1 / SW, bu: 0, av: 1 / SH, bv: 0 };   // buffer pixel -> normalised video coordinates
+const rsOut = new Float32Array(SW * SH);
+function resampleMask(a, mw, mh) {                       // bilinear, in video space; outside the video frame the mask is 0
+  const xs = new Float32Array(SW), xi = new Int32Array(SW);
+  for (let x = 0; x < SW; x++) {
+    const u = vmap.au * (x + 0.5) + vmap.bu;
+    if (u < 0 || u >= 1) { xi[x] = -1; continue; }
+    const fx = Math.min(mw - 1.001, Math.max(0, u * mw - 0.5)); xi[x] = fx | 0; xs[x] = fx - (fx | 0);
+  }
+  for (let y = 0; y < SH; y++) {
+    const v = vmap.av * (y + 0.5) + vmap.bv, row = y * SW;
+    if (v < 0 || v >= 1) { rsOut.fill(0, row, row + SW); continue; }
+    const fy = Math.min(mh - 1.001, Math.max(0, v * mh - 0.5)), y0 = fy | 0, ty = fy - y0, r0 = y0 * mw, r1 = r0 + mw;
+    for (let x = 0; x < SW; x++) {
+      const x0 = xi[x]; if (x0 < 0) { rsOut[row + x] = 0; continue; }
+      const tx = xs[x];
+      rsOut[row + x] = (a[r0 + x0] * (1 - tx) + a[r0 + x0 + 1] * tx) * (1 - ty) + (a[r1 + x0] * (1 - tx) + a[r1 + x0 + 1] * tx) * ty;
+    }
+  }
+  return rsOut;
+}
+// the video as it is (native aspect), downscaled for the models
+const mcv = document.createElement('canvas'), mctx = mcv.getContext('2d', { willReadFrequently: true });
+function modelFrame(longSide, mult = 8) {
+  const vw = vid.videoWidth, vh = vid.videoHeight, k = longSide / Math.max(vw, vh);
+  const w = Math.max(mult, Math.round(vw * k / mult) * mult), h = Math.max(mult, Math.round(vh * k / mult) * mult);
+  if (mcv.width !== w || mcv.height !== h) { mcv.width = w; mcv.height = h; }
+  mctx.drawImage(vid, 0, 0, w, h);
+  return { w, h };
+}
 function uploadFrame() {
   const vw = vid.videoWidth, vh = vid.videoHeight, ar = SW / SH;
   let sx = 0, sy = 0, sw = vw, sh = vh;
   if (vw / vh > ar) { sw = vh * ar; sx = (vw - sw) / 2; } else { sh = vw / ar; sy = (vh - sh) / 2; }
   c2.save();
-  if (camStream && P.mirror) { c2.translate(SW, 0); c2.scale(-1, 1); }
+  const mir = !!(camStream && P.mirror);
+  if (mir) { c2.translate(SW, 0); c2.scale(-1, 1); }
+  let dx, dy, dw, dh;                                   // where the whole video frame lands in the sim buffer
   if (LAND) {                                           // whole camera frame visible at zoom 1, grey fill around it
-    const sc = Math.min(SW / vw, SH / vh) * P.v3w, dw = vw * sc, dh = vh * sc;
+    const sc = Math.min(SW / vw, SH / vh) * P.v3w; dw = vw * sc; dh = vh * sc; dx = (SW - dw) / 2; dy = (SH - dh) / 2;
     c2.fillStyle = '#808080'; c2.fillRect(0, 0, SW, SH);
-    c2.drawImage(vid, 0, 0, vw, vh, (SW - dw) / 2, (SH - dh) / 2, dw, dh);
-  } else c2.drawImage(vid, sx, sy, sw, sh, 0, 0, SW, SH);
+    c2.drawImage(vid, 0, 0, vw, vh, dx, dy, dw, dh);
+  } else { c2.drawImage(vid, sx, sy, sw, sh, 0, 0, SW, SH); dw = vw * SW / sw; dh = vh * SH / sh; dx = -sx * SW / sw; dy = -sy * SH / sh; }
   c2.restore();
+  vmap.au = (mir ? -1 : 1) / dw; vmap.bu = mir ? (SW - dx) / dw : -dx / dw; vmap.av = 1 / dh; vmap.bv = -dy / dh;   // buffer px -> video uv
   device.queue.copyExternalImageToTexture({ source: cv2 }, { texture: srcTex }, [SW, SH]);
   segment();
 }
@@ -833,9 +869,7 @@ function pushMask(a) {
 }
 
 // ---------------------------------------------------------------- Robust Video Matting (onnxruntime-web, recurrent, WebGPU)
-const rvm = { ready: false, loading: false, busy: false, sess: null, ort: null, st: null, ms: 0, ep: '', w: LAND ? 512 : 288, h: LAND ? 288 : 512 };
-const rcv = document.createElement('canvas'); rcv.width = rvm.w; rcv.height = rvm.h;
-const rctx = rcv.getContext('2d', { willReadFrequently: true });
+const rvm = { ready: false, loading: false, busy: false, sess: null, ort: null, st: null, ms: 0, ep: '' };
 async function loadRvm() {
   if (rvm.ready || rvm.loading) return;
   rvm.loading = true; msg('Loading matting model (about 37 MB, first time only)...');
@@ -851,7 +885,7 @@ async function loadRvm() {
     rvm.ort = ort; rvm.sess = sess;
     rvm.zero = () => new ort.Tensor('float32', new Float32Array(1), [1, 1, 1, 1]);
     rvm.st = [rvm.zero(), rvm.zero(), rvm.zero(), rvm.zero()];
-    rvm.ratio = new ort.Tensor('float32', new Float32Array([0.5]), [1]);
+    rvm.ratio = new ort.Tensor('float32', new Float32Array([P.rvmRatio]), [1]);
     rvm.ready = true; msg('');
   } catch (e) { msg('Matting model failed: ' + e.message); P.smodel = 'mp'; $('#smodel').value = 'mp'; }
   rvm.loading = false;
@@ -859,23 +893,16 @@ async function loadRvm() {
 function rvmKick() {
   if (!rvm.ready || rvm.busy) return;
   rvm.busy = true;
-  const t0 = performance.now(), { w, h, ort } = rvm;
-  rctx.drawImage(cv2, 0, 0, w, h);
-  const d = rctx.getImageData(0, 0, w, h).data, n = w * h, f = new Float32Array(3 * n);
+  const t0 = performance.now(), { ort } = rvm;
+  const { w, h } = modelFrame(P.rvmRes, 32);
+  if (rvm.dims !== w + 'x' + h) { rvm.dims = w + 'x' + h; rvm.st = [rvm.zero(), rvm.zero(), rvm.zero(), rvm.zero()]; }
+  const d = mctx.getImageData(0, 0, w, h).data, n = w * h, f = new Float32Array(3 * n);
   for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
   rvm.sess.run({ src: new ort.Tensor('float32', f, [1, 3, h, w]), r1i: rvm.st[0], r2i: rvm.st[1], r3i: rvm.st[2], r4i: rvm.st[3], downsample_ratio: rvm.ratio })
     .then(async (o) => {
       rvm.st = [o.r1o, o.r2o, o.r3o, o.r4o];
       const p = o.pha.data ?? await o.pha.getData();
-      const a = new Float32Array(SW * SH);                  // bilinear up to the sim size
-      for (let y = 0; y < SH; y++) {
-        const fy = Math.min(h - 1.001, Math.max(0, (y + 0.5) * h / SH - 0.5)), y0 = fy | 0, ty = fy - y0;
-        for (let x = 0; x < SW; x++) {
-          const fx = Math.min(w - 1.001, Math.max(0, (x + 0.5) * w / SW - 0.5)), x0 = fx | 0, tx = fx - x0, i = y0 * w + x0;
-          a[y * SW + x] = (p[i] * (1 - tx) + p[i + 1] * tx) * (1 - ty) + (p[i + w] * (1 - tx) + p[i + w + 1] * tx) * ty;
-        }
-      }
-      pushMask(a); rvm.ms = performance.now() - t0; seg.ms = rvm.ms;
+      pushMask(resampleMask(p, w, h)); rvm.ms = performance.now() - t0; seg.ms = rvm.ms;
     })
     .catch((e) => { msg('Matting run failed: ' + e.message); P.smodel = 'mp'; $('#smodel').value = 'mp'; })
     .finally(() => { rvm.busy = false; });
@@ -885,14 +912,10 @@ function segment() {
   if (!seg.ready || (P.subject === 0 && sim.view !== 'v2' && sim.view !== 'v3')) { seg.ms = 0; return; }
   const t0 = performance.now();
   seg.ts = Math.max(seg.ts + 1, Math.round(performance.now()));
-  const r = seg.obj.segmentForVideo(cv2, seg.ts);
+  modelFrame(512);
+  const r = seg.obj.segmentForVideo(mcv, seg.ts);
   const m = r.confidenceMasks[0];
-  let a = m.getAsFloat32Array();
-  if (m.width !== SW || m.height !== SH) {                 // nearest resample if the model output is a different size
-    const b = new Float32Array(SW * SH);
-    for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) b[y * SW + x] = a[Math.floor(y * m.height / SH) * m.width + Math.floor(x * m.width / SW)];
-    a = b;
-  }
+  const a = resampleMask(m.getAsFloat32Array(), m.width, m.height);
   pushMask(a);
   seg.w = m.width; seg.h = m.height;
   m.close(); r.close && r.close();
