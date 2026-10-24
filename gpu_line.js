@@ -626,10 +626,42 @@ fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
   let L = q.b.x;
   let warp = q.e.x;
   let n = i32(N);
+  if (q.e.y > 3.5) {
+    // small to big: the finest cube grid covers everything, then layers of bigger cubes (each x1.618 the one below) are laid over it.
+    // On every layer a random share of the cubes exists; the biggest layer wins, so big cubes cover the small ones around them
+    let s0 = q.a.z;
+    let top = i32(q.e.z);
+    var rcol = vec3f(0.0);
+    for (var L2 = 4; L2 >= 0; L2--) {
+      if (L2 > top) { continue; }
+      let Mk = s0*pow(1.618034, f32(L2));
+      let off = lat(3*L2 + 3, 3*L2, s0*1.0);
+      let pk = pp - off;
+      let ctr = hexCtr(pk, Mk, 0);
+      let id = vec2i(i32(round(ctr.x/(H3*Mk))), i32(round(ctr.y/(Mk*0.5))));
+      if (L2 > 0 && hash2(id.x*3 + 1 + L2*101, id.y*5 + 2 + L2*57) >= q.e.w) { continue; }
+      let p2 = pk - ctr;
+      let c2 = cellAt(p2, Mk);
+      let cen2 = off + ctr + c2.o + (c2.e1 + c2.e2)*0.5;
+      let dk = darkAt(cen2);
+      var rtone = 0.80;
+      if (c2.kind == 0) { rtone = 0.60; } else if (c2.kind == 2) { rtone = 0.94; }
+      if (c2.kind != 1 && hash2(id.x*7 + L2, id.y*11 + c2.kind) < q.b.z) { rtone = 1.54 - rtone; }
+      let rval = clamp(rtone - q.b.y*dk, 0.0, 1.0);
+      var cc = mix(q.c.rgb, q.d.rgb, rval);
+      let lw2 = q.d.w;
+      let ru = min(c2.u, 1.0 - c2.u)/c2.gu; let rv = min(c2.v, 1.0 - c2.v)/c2.gv;
+      var rink = max(cov(ru, lw2*1.5), cov(rv, lw2*1.5));
+      rink = max(rink, cov(hexEdge(p2, Mk), lw2*2.0));
+      rcol = mix(cc, q.c.rgb, clamp(rink, 0.0, 1.0));
+      break;
+    }
+    return vec4f(rcol, 1.0);
+  }
   if (q.e.y > 2.5) {
     // random cube sizes (test, no logic): the plane is cut into big cubes (hexagons); each one is filled with the iso cube pattern at a random
     // smaller scale, anchored on its centre so the pattern lines up with the big cube's outline
-    let ctr = hexCtr(pp, M, i32(q.e.w));
+    let ctr = hexCtr(pp, M, 0);
     let id = vec2i(i32(round(ctr.x/(H3*M))), i32(round(ctr.y/(M*0.5))));
     let steps = q.e.z;
     let kk = min(i32(floor(hash2(id.x*3 + 1, id.y*5 + 2)*(steps + 1.0))), i32(steps));
