@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261024133931">
+<meta name="build" content="20261024134646">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.6 (2026-10-24 13:39)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.7 (2026-10-24 13:46)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -84,8 +84,7 @@
       <div class="ctl" data-views="v3"><span>Thick line</span><input type="range" id="v3b" min="0.2" max="0.9" step="0.01" value="0.45"><output></output></div>
       <div class="ctl" data-views="v3"><span>Dash length px</span><input type="range" id="v3d" min="3" max="40" step="1" value="8"><output></output></div>
       <div class="ctl" data-views="v3"><span>Bill colour</span><span><input type="color" id="v3c" value="#d7d4d4"></span><span></span></div>
-      <div class="ctl" data-views="v3"><span>Camera width</span><input type="range" id="v3w" min="0.3" max="1" step="0.01" value="0.7"><output></output></div>
-      <div class="ctl" data-views="v3"><span>Face relief</span><input type="range" id="v3f" min="-3" max="3" step="0.05" value="-1.2"><output></output></div>
+      <div class="ctl" data-views="v3"><span>Camera zoom</span><input type="range" id="v3w" min="1" max="3" step="0.01" value="1"><output></output></div>
       <div class="ctl" data-views="v3"><span>Auto fit</span><label class="note"><input type="checkbox" id="v3auto" checked> fit subject to the oval</label><span></span></div>
       <div class="ctl" data-views="v3"><span>Smoothing</span><input type="range" id="v3m" min="0" max="0.95" step="0.01" value="0.6"><output></output></div>
       <div class="ctl" data-views="v3"><span>Subject X</span><input type="range" id="v3x" min="0.1" max="0.9" step="0.005" value="0.37"><output></output></div>
@@ -113,6 +112,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261024133931"></script>
+<script type="module" src="gpu_line.js?b=20261024134646"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 // V1 LINE on the GPU (WebGPU). Port of engine/line_engine.py.
 // Whole pipeline stays on the GPU: video -> CLAHE darkness -> spacing field R -> differential growth -> draw.
-const SW = 540, SH = 960, OW = 1080, OH = 1920, SCALE = 2, MAXN = 262144, MARGIN = 6;
+const LAND = new URLSearchParams(location.search).has('land');   // V3 100$ runs in its own landscape page mode
+const SW = LAND ? 960 : 540, SH = LAND ? 540 : 960, OW = 1080, OH = 1920, SCALE = 2, MAXN = 262144, MARGIN = 6;
 const CS = 4.16, GW = Math.floor(SW / CS) + 1, GH = Math.floor(SH / CS) + 1;
 const NGW = 70, NGH = 121;                 // low-res noise grid (8 sim px per cell)
 const WARM_STEPS = 150;                    // V1 stops by itself at ~125
@@ -466,15 +467,10 @@ struct V2 { a:vec4f, b:vec4f, c:vec4f, d:vec4f, e:vec4f };
 @group(0) @binding(1) var<storage, read> st: array<f32>;
 @group(0) @binding(2) var<storage, read> hs: array<f32>;
 @group(0) @binding(3) var<storage, read> hl: array<f32>;
-@group(0) @binding(4) var<storage, read> fc: array<f32>;
 ${bilFn('bst', 'st')}
 ${bilFn('bhs', 'hs')}
 ${bilFn('bhl', 'hl')}
-fn bfc(p:vec2f)->f32 {
-  let q = p*0.25; let x = clamp(q.x - 0.5, 0.0, 134.0 - 0.001); let y = clamp(q.y - 0.5, 0.0, 239.0 - 0.001);
-  let x0 = u32(x); let y0 = u32(y); let fx = x - f32(x0); let fy = y - f32(y0); let i = y0*135u + x0;
-  return mix(mix(fc[i], fc[i + 1u], fx), mix(fc[i + 135u], fc[i + 136u], fx), fy);
-}
+
 @vertex fn vs(@builtin(vertex_index) i:u32) -> @builtin(position) vec4f {
   let p = array<vec2f,3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
   return vec4f(p[i], 0.0, 1.0);
@@ -493,7 +489,7 @@ fn bfc(p:vec2f)->f32 {
   var fr = mix(q.b.y, q.b.z, pow(dd, 0.8));           // line weight as a fraction of the spacing: thin in light, thick in dark
   if (bill) { fr = mix(max(fr, 0.14), fr, t); }       // brightest areas: points
   var v = uv.y/S;
-  if (q.b.x < 0.5) { v = (uv.y + q.a.w*(bhl(p) + q.e.w*bfc(p)))/S; }   // face features push the other way   // relief: rows ride up over the subject
+  if (q.b.x < 0.5) { v = (uv.y + q.a.w*bhl(p))/S; }   // relief: rows ride up over the subject
   let fw = max(fwidth(v), 1e-4);
   var a = clamp((fr*0.5 - abs(fract(v) - 0.5))/fw + 0.5, 0.0, 1.0);
   a = min(a, clamp(fr/fw, 0.0, 1.0));
@@ -597,8 +593,7 @@ const v2bgl = device.createBindGroupLayout({ entries: [
   { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
   { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
   { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-  { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-  { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }] });
+  { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }] });
 const pipeV2 = device.createRenderPipeline({ layout: device.createPipelineLayout({ bindGroupLayouts: [v2bgl] }), vertex: { module: mV2, entryPoint: 'vs' },
   fragment: { module: mV2, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' } });
 let low = null;     // low-res target, rebuilt when the pixel size changes
@@ -624,7 +619,7 @@ const B = {
   gray: mk(F32, S), keyr: mk(F32, S), keyA: mk(F32, S), keyB: mk(F32, S), keyC: mk(F32, S),
   lut: mk(36 * 256 * 4, S), hist2: mk(256 * 4, S | CD), stretch: mk(16, S),
   cl: mk(F32, S), dg: mk(F32, S), dtmp: mk(F32, S), dgb: mk(F32, S),
-  mask: mk(F32, S | CD), face: mk(135 * 240 * 4, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
+  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
   na: mk(NGW * NGH * 4, S | CD), nb: mk(NGW * NGH * 4, S | CD),
   meta: mk(16, S | CD | CSRC), args: mk(48, S | GPUBufferUsage.INDIRECT | CD),
   pos: mk(MAXN * 8, S | CD), mv: mk(MAXN * 16, S), head: mk(GW * GH * 4, S), nxt: mk(MAXN * 4, S),
@@ -672,7 +667,7 @@ const drawBG = device.createBindGroup({ layout: drawPipe.getBindGroupLayout(0),
   entries: [{ binding: 0, resource: { buffer: B.du } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }] });
 
 const drawV2BG = device.createBindGroup({ layout: v2bgl,
-  entries: [{ binding: 0, resource: { buffer: B.v2u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.hS } }, { binding: 3, resource: { buffer: B.hL } }, { binding: 4, resource: { buffer: B.face } }] });
+  entries: [{ binding: 0, resource: { buffer: B.v2u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.hS } }, { binding: 3, resource: { buffer: B.hL } }] });
 const draw8BG = device.createBindGroup({ layout: pipe8.getBindGroupLayout(0),
   entries: [{ binding: 0, resource: { buffer: B.du8 } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }, { binding: 3, resource: { buffer: B.state } }] });
 
@@ -700,7 +695,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 0.7, v3f: -1.2, v3m: 0.6, v3auto: true, v3c: [215, 212, 212],
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, v3auto: true, v3c: [215, 212, 212],
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -782,15 +777,14 @@ function uploadFrame() {
   if (vw / vh > ar) { sw = vh * ar; sx = (vw - sw) / 2; } else { sh = vw / ar; sy = (vh - sh) / 2; }
   c2.save();
   if (camStream && P.mirror) { c2.translate(SW, 0); c2.scale(-1, 1); }
-  if (sim.view === 'v3' && P.v3w < 0.999) {              // wider view: show more of the camera frame, grey fill around it
-    const dw = vw / (sw / P.v3w) * SW, dh = vh / (sh / P.v3w) * SH;
+  if (LAND) {                                           // whole camera frame visible at zoom 1, grey fill around it
+    const sc = Math.min(SW / vw, SH / vh) * P.v3w, dw = vw * sc, dh = vh * sc;
     c2.fillStyle = '#808080'; c2.fillRect(0, 0, SW, SH);
     c2.drawImage(vid, 0, 0, vw, vh, (SW - dw) / 2, (SH - dh) / 2, dw, dh);
   } else c2.drawImage(vid, sx, sy, sw, sh, 0, 0, SW, SH);
   c2.restore();
   device.queue.copyExternalImageToTexture({ source: cv2 }, { texture: srcTex }, [SW, SH]);
   segment();
-  if (sim.view === 'v3') faceFeatures();
 }
 
 
@@ -852,65 +846,6 @@ function segment() {
   seg.ms = performance.now() - t0;
 }
 
-// ---------------------------------------------------------------- face features (MediaPipe face landmarker)
-const face = { ready: false, loading: false, obj: null, ts: 0, ms: 0, had: false };
-const fcv = document.createElement('canvas'); fcv.width = 135; fcv.height = 240;
-const fctx = fcv.getContext('2d', { willReadFrequently: true });
-const faceBuf = new Float32Array(135 * 240);
-const NOSE = [168, 193, 417, 129, 358, 48, 278, 98, 327, 2];
-async function loadFace() {
-  if (face.ready || face.loading) return;
-  face.loading = true;
-  try {
-    const vision = await import('./vendor/vision_bundle.mjs');
-    const b64 = (await import('./vendor/face_b64.js')).default;
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-    const fileset = await vision.FilesetResolver.forVisionTasks('vendor/wasm');
-    for (const delegate of ['GPU', 'CPU']) {
-      try {
-        face.obj = await vision.FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetBuffer: bytes, delegate }, runningMode: 'VIDEO', numFaces: 1 });
-        face.cls = vision.FaceLandmarker; break;
-      } catch (e) { if (delegate === 'CPU') throw e; }
-    }
-    face.ready = true;
-  } catch (e) { msg('Face model failed: ' + e.message); }
-  face.loading = false;
-}
-const idxOf = (conns) => [...new Set(conns.flatMap((c) => [c.start, c.end]))];
-function hull(pts) {
-  pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const lo = [], up = [];
-  for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
-  for (const p of pts.slice().reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
-  return lo.slice(0, -1).concat(up.slice(0, -1));
-}
-function faceFeatures() {
-  if (!face.ready || (face.n = (face.n || 0) + 1) % 2 === 0) return;   // every other frame, the mask is reused in between
-  const t0 = performance.now();
-  face.ts = Math.max(face.ts + 1, Math.round(performance.now()));
-  const r = face.obj.detectForVideo(cv2, face.ts);
-  const tDet = performance.now() - t0;
-  const lm = r.faceLandmarks && r.faceLandmarks[0];
-  if (!lm && !face.had) return;
-  fctx.filter = 'none'; fctx.fillStyle = '#000'; fctx.fillRect(0, 0, 135, 240);
-  if (lm) {
-    const C = face.cls;
-    fctx.fillStyle = '#fff';
-    for (const g of [C.FACE_LANDMARKS_LEFT_EYE, C.FACE_LANDMARKS_RIGHT_EYE, C.FACE_LANDMARKS_LEFT_EYEBROW, C.FACE_LANDMARKS_RIGHT_EYEBROW, C.FACE_LANDMARKS_LIPS, null]) {
-      const ids = g ? idxOf(g) : NOSE;
-      const h = hull(ids.map((i) => [lm[i].x * 135, lm[i].y * 240]));
-      fctx.beginPath(); h.forEach((p, k) => (k ? fctx.lineTo(p[0], p[1]) : fctx.moveTo(p[0], p[1]))); fctx.closePath(); fctx.fill();
-    }
-    fctx.filter = 'blur(2.5px)'; fctx.drawImage(fcv, 0, 0); fctx.filter = 'none';
-  }
-  const d = fctx.getImageData(0, 0, 135, 240).data;
-  for (let i = 0, n = 135 * 240; i < n; i++) faceBuf[i] = faceBuf[i] * P.v3m + (d[i * 4] / 255) * (1 - P.v3m);
-  device.queue.writeBuffer(B.face, 0, faceBuf);
-  face.had = !!lm; face.ms = performance.now() - t0; face.det = tDet;
-  r.close && r.close();
-}
-
 // ---------------------------------------------------------------- one frame
 function encodeField(enc) {
   enc.clearBuffer(B.hist2);
@@ -956,14 +891,14 @@ const BW = 2373, BH = 1012;                           // V3 100$ canvas = the bi
 function billPanel() {
   if (!P.v3auto || !box.init) {
     const ph = P.v3k*BH, z = ph/SH;
-    return [P.v3x*BW - SW*z/2, (BH - ph)/2 + P.v3y*BH, z, P.v3f];
+    return [P.v3x*BW - SW*z/2, (BH - ph)/2 + P.v3y*BH, z, 0];
   }
   // auto fit: scale the subject's bounding box into a target area of the bill, bottom aligned, centred on X
   const th = 0.85*P.v3k*BH, tw = 0.34*P.v3k*BW;
   const bw = Math.max(box.x1 - box.x0, 40), bh = Math.max(box.y1 - box.y0, 40);
   const z = Math.min(tw/bw, th/bh);
   const cx = P.v3x*BW, bottom = BH*(0.5 + P.v3y) + th/2;
-  return [cx - (box.x0 + bw/2)*z, bottom - box.y1*z, z, P.v3f];
+  return [cx - (box.x0 + bw/2)*z, bottom - box.y1*z, z, 0];
 }
 function encodeV2(enc, bill = false) {
   const im = [Math.ceil(SW / 16), Math.ceil(SH / 16)];
@@ -1160,7 +1095,6 @@ function setView(id) {
   $('#stage').classList.toggle('land', land);
   if (id !== 'src') sim.boost = 8;
   if (id === 'v2' || id === 'v3') loadSegmenter();
-  if (id === 'v3') loadFace();
   document.querySelectorAll('#versions button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
   const vl = versions.find((v) => v.id === id);
   $('#setHead').textContent = vl.label + ' settings';
@@ -1169,9 +1103,10 @@ function setView(id) {
 }
 for (const v of versions) {
   const b = document.createElement('button'); b.textContent = v.label; b.dataset.id = v.id;
-  b.onclick = () => setView(v.id); $('#versions').append(b);
+  b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
+  $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3f: 'v3f', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1293,7 +1228,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3f', 'v3c', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3c', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
@@ -1325,7 +1260,10 @@ $('#setdef').onclick = () => {
   setTimeout(() => { $('#setdef').textContent = 'Set default'; }, 1600);
 };
 $('#resetdef').onclick = () => { try { localStorage.removeItem(STORE); } catch {} location.reload(); };
-setView(saved && saved.view && versions.some((v) => v.id === saved.view) ? saved.view : 'gpu');
+const qv = new URLSearchParams(location.search).get('view');
+const startView = qv && versions.some((v) => v.id === qv) ? qv : saved && saved.view && versions.some((v) => v.id === saved.view) ? saved.view : 'gpu';
+if ((startView === 'v3') !== LAND) location.replace(location.pathname + (startView === 'v3' ? '?land=1&view=v3' : '?view=' + startView));
+setView(startView);
 await start();
 loadSegmenter();
 await startCamera();
@@ -1353,4 +1291,4 @@ window.__device = device;
     check(); setInterval(check, 30000);
   }
 }
-window.__face = { face, faceBuf };
+
