@@ -698,7 +698,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: 'mp', rvmRes: 640, rvmRatio: 0.5, v3auto: true, v3c: [215, 212, 212],
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: LAND ? 'rvm' : 'mp', rvmRes: 640, rvmRatio: 0.5, v3int: 1, v3p: 6, v3res: 1536, v3auto: true, v3c: [215, 212, 212],
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -797,26 +797,29 @@ function resampleMask(a, mw, mh) {                       // bilinear, in video s
 }
 // the video as it is (native aspect), downscaled for the models
 const mcv = document.createElement('canvas'), mctx = mcv.getContext('2d', { willReadFrequently: true });
+const still = { snap: document.createElement('canvas'), busy: false, last: 0, ms: 0, have: false };
+const srcEl = () => (sim.view === 'v3' && still.have ? still.snap : vid);
+const dimW = (e) => e.videoWidth || e.width, dimH = (e) => e.videoHeight || e.height;
 function modelFrame(longSide, mult = 8) {
-  const vw = vid.videoWidth, vh = vid.videoHeight, k = longSide / Math.max(vw, vh);
+  const el = srcEl(), vw = dimW(el), vh = dimH(el), k = longSide / Math.max(vw, vh);
   const w = Math.max(mult, Math.round(vw * k / mult) * mult), h = Math.max(mult, Math.round(vh * k / mult) * mult);
   if (mcv.width !== w || mcv.height !== h) { mcv.width = w; mcv.height = h; }
-  mctx.drawImage(vid, 0, 0, w, h);
+  mctx.drawImage(el, 0, 0, w, h);
   return { w, h };
 }
 function uploadFrame() {
-  const vw = vid.videoWidth, vh = vid.videoHeight, ar = SW / SH;
+  const el = srcEl(), vw = dimW(el), vh = dimH(el), ar = SW / SH;
   let sx = 0, sy = 0, sw = vw, sh = vh;
   if (vw / vh > ar) { sw = vh * ar; sx = (vw - sw) / 2; } else { sh = vw / ar; sy = (vh - sh) / 2; }
   c2.save();
-  const mir = !!(camStream && P.mirror);
+  const mir = !!(camStream && P.mirror);   // (a snapshot is stored unflipped too)
   if (mir) { c2.translate(SW, 0); c2.scale(-1, 1); }
   let dx, dy, dw, dh;                                   // where the whole video frame lands in the sim buffer
   if (LAND) {                                           // whole camera frame visible at zoom 1, grey fill around it
     const sc = Math.min(SW / vw, SH / vh) * P.v3w; dw = vw * sc; dh = vh * sc; dx = (SW - dw) / 2; dy = (SH - dh) / 2;
     c2.fillStyle = '#808080'; c2.fillRect(0, 0, SW, SH);
-    c2.drawImage(vid, 0, 0, vw, vh, dx, dy, dw, dh);
-  } else { c2.drawImage(vid, sx, sy, sw, sh, 0, 0, SW, SH); dw = vw * SW / sw; dh = vh * SH / sh; dx = -sx * SW / sw; dy = -sy * SH / sh; }
+    c2.drawImage(el, 0, 0, vw, vh, dx, dy, dw, dh);
+  } else { c2.drawImage(el, sx, sy, sw, sh, 0, 0, SW, SH); dw = vw * SW / sw; dh = vh * SH / sh; dx = -sx * SW / sw; dy = -sy * SH / sh; }
   c2.restore();
   vmap.au = (mir ? -1 : 1) / dw; vmap.bu = mir ? (SW - dx) / dw : -dx / dw; vmap.av = 1 / dh; vmap.bv = -dy / dh;   // buffer px -> video uv
   device.queue.copyExternalImageToTexture({ source: cv2 }, { texture: srcTex }, [SW, SH]);
@@ -858,12 +861,11 @@ function trackBox(m) {
   box.x0 += (x0 - box.x0) * k; box.x1 += (x1 - box.x1) * k; box.y0 += (y0 - box.y0) * k; box.y1 += (y1 - box.y1) * k;
 }
 function pushMask(a) {
-  if (sim.view === 'v2' || sim.view === 'v3') {            // temporal smoothing of the subject mask: kills the flicker
+  if (sim.view === 'v3') { trackBox(a); } else if (sim.view === 'v2') {            // temporal smoothing of the subject mask: kills the flicker
     if (!seg.cur) { seg.cur = new Float32Array(SW * SH); seg.cur.set(a); }
     const s = P.smodel === 'rvm' ? P.v3m * 0.5 : P.v3m, n = SW * SH, cur = seg.cur;   // the matting model is already temporally stable
     for (let i = 0; i < n; i++) cur[i] = cur[i] * s + a[i] * (1 - s);
     a = cur;
-    if (sim.view === 'v3') trackBox(a);
   }
   device.queue.writeBuffer(B.mask, 0, a);
 }
@@ -890,6 +892,17 @@ async function loadRvm() {
   } catch (e) { msg('Matting model failed: ' + e.message); P.smodel = 'mp'; $('#smodel').value = 'mp'; }
   rvm.loading = false;
 }
+async function runRvm(res) {                           // one matting pass on the current source; returns the resampled mask
+  const { ort } = rvm;
+  const { w, h } = modelFrame(res, 32);
+  if (rvm.dims !== w + 'x' + h) { rvm.dims = w + 'x' + h; rvm.st = [rvm.zero(), rvm.zero(), rvm.zero(), rvm.zero()]; }
+  const d = mctx.getImageData(0, 0, w, h).data, n = w * h, f = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+  const o = await rvm.sess.run({ src: new ort.Tensor('float32', f, [1, 3, h, w]), r1i: rvm.st[0], r2i: rvm.st[1], r3i: rvm.st[2], r4i: rvm.st[3], downsample_ratio: rvm.ratio });
+  rvm.st = [o.r1o, o.r2o, o.r3o, o.r4o];
+  const p = o.pha.data ?? await o.pha.getData();
+  return resampleMask(p, w, h);
+}
 function rvmKick() {
   if (!rvm.ready || rvm.busy) return;
   rvm.busy = true;
@@ -907,7 +920,44 @@ function rvmKick() {
     .catch((e) => { msg('Matting run failed: ' + e.message); P.smodel = 'mp'; $('#smodel').value = 'mp'; })
     .finally(() => { rvm.busy = false; });
 }
+async function stillCycle() {
+  const vw = vid.videoWidth, vh = vid.videoHeight;
+  if (still.busy || vid.readyState < 2 || !vw) return;
+  still.busy = true; still.last = performance.now();
+  const t0 = performance.now(); let tMat = 0;
+  try {
+    if (still.snap.width !== vw || still.snap.height !== vh) { still.snap.width = vw; still.snap.height = vh; }
+    still.snap.getContext('2d').drawImage(vid, 0, 0, vw, vh); still.have = true;   // freeze this frame
+    uploadFrame();                                       // also fixes the video -> buffer mapping for the mask
+    const t1 = performance.now();
+    if (P.smodel === 'rvm' && rvm.ready) {
+      rvm.st = [rvm.zero(), rvm.zero(), rvm.zero(), rvm.zero()];   // same still frame several times so the recurrent state settles
+      let a = null;
+      for (let i = 0; i < P.v3p; i++) a = await runRvm(P.v3res);
+      box.init = false; pushMask(a);
+    } else if (seg.ready) {
+      modelFrame(1024);
+      seg.ts = Math.max(seg.ts + 1, Math.round(performance.now()));
+      const r = seg.obj.segmentForVideo(mcv, seg.ts), m = r.confidenceMasks[0];
+      box.init = false; pushMask(resampleMask(m.getAsFloat32Array(), m.width, m.height));
+      m.close(); r.close && r.close();
+    }
+    tMat = performance.now() - t1;
+    sim.frame = 0;                                       // first-frame behaviour: no temporal blending of the tone field
+    await tick({ full: true });
+    still.ms = performance.now() - t0;
+    $('#stillinfo').textContent = `Capture: ${still.ms.toFixed(0)} ms total (matting ${tMat.toFixed(0)} ms, ${P.smodel === 'rvm' ? P.v3p + ' passes at ' + P.v3res + ' px' : '1 pass'}). ${rvm.ep ? 'Model runs on ' + rvm.ep + '.' : ''}`;
+  } catch (e) { msg('Capture failed: ' + e.message); }
+  still.busy = false;
+}
+function stillTick() {
+  if (still.busy || !sim.running || benchRunning) return;
+  const iv = P.v3int * 1000;
+  if (P.v3int > 0 && performance.now() - still.last >= iv) stillCycle();
+}
+$('#capnow').onclick = () => stillCycle();
 function segment() {
+  if (sim.view === 'v3') return;                         // V3 captures stills, see stillCycle
   if (P.smodel === 'rvm' && (sim.view === 'v2' || sim.view === 'v3')) { rvmKick(); return; }
   if (!seg.ready || (P.subject === 0 && sim.view !== 'v2' && sim.view !== 'v3')) { seg.ms = 0; return; }
   const t0 = performance.now();
@@ -1110,6 +1160,7 @@ setInterval(renderStats, 250);
 let lastMedia = -1;
 function loop() {
   requestAnimationFrame(loop);
+  if (sim.view === 'v3') { stillTick(); return; }
   if (vid.readyState < 2) return;
   const t = vid.currentTime;
   if (t === lastMedia) return;                              // no new video frame yet
@@ -1171,6 +1222,7 @@ function setView(id) {
   $('#stage').classList.toggle('land', land);
   if (id !== 'src') sim.boost = 8;
   if (id === 'v2' || id === 'v3') loadSegmenter();
+  if (id === 'v3') { still.last = 0; if (P.smodel === 'rvm') loadRvm(); }
   document.querySelectorAll('#versions button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
   const vl = versions.find((v) => v.id === id);
   $('#setHead').textContent = vl.label + ' settings';
@@ -1182,7 +1234,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1305,7 +1357,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
@@ -1338,6 +1390,7 @@ $('#setdef').onclick = () => {
 };
 $('#resetdef').onclick = () => { try { localStorage.removeItem(STORE); } catch {} location.reload(); };
 const qv = new URLSearchParams(location.search).get('view');
+$('#smodel').value = P.smodel;
 const startView = qv && versions.some((v) => v.id === qv) ? qv : saved && saved.view && versions.some((v) => v.id === saved.view) ? saved.view : 'gpu';
 if ((startView === 'v3') !== LAND) location.replace(location.pathname + (startView === 'v3' ? '?land=1&view=v3' : '?view=' + startView));
 setView(startView);
