@@ -577,6 +577,22 @@ fn levelAt(pp:vec2f) -> f32 {
 fn lvn(c:Cell, i:i32, j:i32, N:f32, L:f32) -> f32 {
   return levelAt(c.o + (c.e1*(f32(i) + 0.5) + c.e2*(f32(j) + 0.5))/N)/max(L - 1.0, 1.0);
 }
+fn darkAt(pp:vec2f) -> f32 {
+  let sp = toCanvas(pp)*0.5;
+  let dd = clamp(bst(sp)*1.6 - 0.08, 0.0, 1.0);
+  return select(q.c.w/max(q.b.x - 1.0, 1.0), dd, bmk(sp) > 0.5);
+}
+// mean darkness over a uv rectangle of a face, from 5 samples
+fn regionDark(c:Cell, r:vec4f) -> f32 {
+  var t = 0.0;
+  for (var k = 0; k < 5; k++) {
+    let fx = select(select(0.25, 0.75, (k & 1) == 1), 0.5, k == 4);
+    let fy = select(select(0.25, 0.75, (k & 2) == 2), 0.5, k == 4);
+    let uu = mix(r.x, r.z, fx); let vv = mix(r.y, r.w, fy);
+    t += darkAt(c.o + c.e1*uu + c.e2*vv);
+  }
+  return t*0.2;
+}
 fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
 @fragment fn fs(@builtin(position) f:vec4f) -> @location(0) vec4f {
   let s = q.a.z; let N = q.a.w; let M = s*N;
@@ -585,7 +601,51 @@ fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
   let L = q.b.x;
   let warp = q.e.x;
   let n = i32(N);
-  if (q.e.y > 0.5) {
+  if (q.e.y > 1.5) {
+    // golden subdivision: each face is a big square that splits into golden-ratio squares and rectangles, nested like a spiral.
+    // Light areas stop early (big whole cubes), dark areas keep splitting, so sizes shrink steadily instead of sitting on one grid
+    let minpx = max(s, 2.0);
+    let pu = clamp(c.u, 0.0, 0.9999); let pv = clamp(c.v, 0.0, 0.9999);
+    var r = vec4f(0.0, 0.0, 1.0, 1.0);
+    for (var it = 0; it < 14; it++) {
+      let w = r.z - r.x; let h = r.w - r.y;
+      let big = max(w, h)*M;
+      let sq = max(w, h) < min(w, h)*1.2;
+      let t = regionDark(c, r);
+      let tgt = mix(M, minpx, pow(t, q.e.z));
+      if (big <= minpx*1.05) { break; }
+      if (sq && big <= tgt) { break; }
+      let fb = hash2(c.ci*31 + i32(r.x*8192.0) + it, c.cj*17 + i32(r.y*8192.0) + c.kind*5);
+      let fb2 = fract(fb*7.31);
+      if (sq) {
+        let xm = r.x + w*select(0.381966, 0.618034, fb > 0.5);
+        let ym = r.y + h*select(0.381966, 0.618034, fb2 > 0.5);
+        if (pu < xm) { r.z = xm; } else { r.x = xm; }
+        if (pv < ym) { r.w = ym; } else { r.y = ym; }
+      } else if (w > h) {
+        // cut a square of side h off one end, the rest stays a golden rectangle
+        let xm = select(r.z - h, r.x + h, fb > 0.5);
+        if (pu < xm) { r.z = xm; } else { r.x = xm; }
+      } else {
+        let ym = select(r.w - w, r.y + w, fb > 0.5);
+        if (pv < ym) { r.w = ym; } else { r.y = ym; }
+      }
+    }
+    let gt = regionDark(c, r);
+    var gtone = 0.80;
+    if (c.kind == 0) { gtone = 0.60; } else if (c.kind == 2) { gtone = 0.94; }
+    if (c.kind != 1 && hash2(c.ci, c.cj*7 + c.kind) < q.b.z) { gtone = 1.54 - gtone; }
+    let gval = clamp(gtone - q.b.y*gt, 0.0, 1.0);
+    var gcol = mix(q.c.rgb, q.d.rgb, gval);
+    let gdu = min(pu - r.x, r.z - pu)/c.gu;
+    let gdv = min(pv - r.y, r.w - pv)/c.gv;
+    var gink = max(cov(gdu, q.d.w), cov(gdv, q.d.w));
+    let gmu = min(c.u, 1.0 - c.u)/c.gu; let gmv = min(c.v, 1.0 - c.v)/c.gv;
+    gink = max(gink, max(cov(gmu, q.d.w*2.0), cov(gmv, q.d.w*2.0)));
+    gcol = mix(gcol, q.c.rgb, clamp(gink, 0.0, 1.0));
+    return vec4f(gcol, 1.0);
+  }
+  if (q.e.y > 0.5 && q.e.y < 1.5) {
     // size contrast: light areas merge pixels into one big block, dark areas stay split into small ones (like line spacing in V1)
     var top = 1; var topE = 0;
     for (var k = 0; k < 5; k++) { if (top < n) { top *= 2; topE += 1; } }
@@ -1199,7 +1259,7 @@ function encodeV2(enc, bill = false) {
 
 function encodeV4(enc) {
   const rgb = (c) => c.map((x) => x / 255);
-  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, 0, 0]));
+  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w, P.v4k, P.v4m, 0.7, 0]));
   const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
