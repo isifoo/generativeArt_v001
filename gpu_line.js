@@ -461,7 +461,7 @@ const bilFn = (name, buf) => `fn ${name}(p:vec2f)->f32 {
   return mix(mix(${buf}[i], ${buf}[i + 1u], fx), mix(${buf}[i + ${SW}u], ${buf}[i + ${SW + 1}u], fx), fy);
 }`;
 const DRAWV2 = /* wgsl */`
-struct V2 { a:vec4f, b:vec4f, c:vec4f, d:vec4f };
+struct V2 { a:vec4f, b:vec4f, c:vec4f, d:vec4f, e:vec4f };
 @group(0) @binding(0) var<uniform> q:V2;
 @group(0) @binding(1) var<storage, read> st: array<f32>;
 @group(0) @binding(2) var<storage, read> hs: array<f32>;
@@ -474,10 +474,14 @@ ${bilFn('bhl', 'hl')}
   return vec4f(p[i], 0.0, 1.0);
 }
 @fragment fn fs(@builtin(position) f:vec4f) -> @location(0) vec4f {
-  let S = q.a.z; let uv = f.xy; let p = uv*0.5;
+  let S = q.a.z; let uv = f.xy;
+  let bill = q.c.w > 0.5;
+  // bill: the canvas is bill shaped and the portrait frame sits in a panel (e.xy = origin, e.z = canvas px per sim px)
+  var p = uv*0.5;
+  if (bill) { p = (uv - q.e.xy)/q.e.z; }
+  let inb = select(0.0, 1.0, p.x > 0.0 && p.y > 0.0 && p.x < ${SW}.0 && p.y < ${SH}.0);
   let d = bst(p);
   let dd = clamp(d*1.6 - 0.08, 0.0, 1.0);
-  let bill = q.c.w > 0.5;
   let zone = max(q.b.w, 0.01);
   let t = smoothstep(0.0, zone, dd);                  // 0 in the brightest areas, 1 once lines run continuous
   var fr = mix(q.b.y, q.b.z, pow(dd, 0.8));           // line weight as a fraction of the spacing: thin in light, thick in dark
@@ -506,6 +510,11 @@ ${bilFn('bhl', 'hl')}
   let ao = clamp(ow*0.5 - abs(sd) + 0.5, 0.0, 1.0)*step(0.5, ow);
   let hal = clamp(ow*0.5 + gap - abs(sd) + 0.5, 0.0, 1.0)*ol;
   a = max(a*(1.0 - hal), ao);
+  if (bill) {                                         // only the subject gets lines, the rest stays transparent
+    let cover = clamp(sd + 0.5, 0.0, 1.0)*inb;
+    let al = a*cover;
+    return vec4f(q.c.rgb*al, al);
+  }
   return vec4f(mix(q.d.rgb, q.c.rgb, a), 1.0);
 }
 `;
@@ -561,7 +570,7 @@ kernel('smooth', ['ro', 'ro', 'rw']);
 const canvas = $('#cv');
 const ctx = canvas.getContext('webgpu');
 const FORMAT = navigator.gpu.getPreferredCanvasFormat();
-ctx.configure({ device, format: FORMAT, alphaMode: 'opaque' });
+ctx.configure({ device, format: FORMAT, alphaMode: 'premultiplied' });
 const drawMod = device.createShaderModule({ code: DRAW });
 const drawPipe = device.createRenderPipeline({
   layout: 'auto',
@@ -609,7 +618,7 @@ const B = {
   gray: mk(F32, S), keyr: mk(F32, S), keyA: mk(F32, S), keyB: mk(F32, S), keyC: mk(F32, S),
   lut: mk(36 * 256 * 4, S), hist2: mk(256 * 4, S | CD), stretch: mk(16, S),
   cl: mk(F32, S), dg: mk(F32, S), dtmp: mk(F32, S), dgb: mk(F32, S),
-  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(64, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
+  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
   na: mk(NGW * NGH * 4, S | CD), nb: mk(NGW * NGH * 4, S | CD),
   meta: mk(16, S | CD | CSRC), args: mk(48, S | GPUBufferUsage.INDIRECT | CD),
   pos: mk(MAXN * 8, S | CD), mv: mk(MAXN * 16, S), head: mk(GW * GH * 4, S), nxt: mk(MAXN * 4, S),
@@ -685,7 +694,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 12, v3r: 70, v3a: 0.035, v3b: 0.45, v3d: 14, v3z: 0.22,
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0.08, v3k: 1.2,
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -855,16 +864,21 @@ function encodeDraw(enc) {
 
 
 
+const BW = 2373, BH = 1012;                           // V3 100$ canvas = the bill image
+function billPanel() {
+  const ph = P.v3k*BH, z = ph/SH;
+  return [P.v3x*BW - SW*z/2, (BH - ph)/2 + P.v3y*BH, z, 0];
+}
 function encodeV2(enc, bill = false) {
   const im = [Math.ceil(SW / 16), Math.ceil(SH / 16)];
   run(enc, 'blur', G.hsH, im, 'v2: subject shape'); run(enc, 'blur', G.hsV, im, 'v2: subject shape');
   run(enc, 'blur', G.hlH, im, 'v2: subject shape'); run(enc, 'blur', G.hlV, im, 'v2: subject shape');
   const rgb = (c) => c.map((x) => x / 255);
   const u = bill
-    ? [OW, OH, P.v3s, P.v3r, P.v2m, P.v3a, P.v3b, P.v3z, 0, 0, 0, 1, 1, 1, 1, P.v3d]
+    ? [BW, BH, P.v3s, P.v3r, P.v2m, P.v3a, P.v3b, P.v3z, 0, 0, 0, 1, 1, 1, 1, P.v3d, ...billPanel()]
     : [OW, OH, P.v2s, P.v2r, P.v2mode, P.v2a, P.v2b, P.v2o, ...rgb(P.fg), 0, ...rgb(P.bgc), P.v2g];
   device.queue.writeBuffer(B.v2u, 0, new Float32Array(u));
-  const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
+  const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: bill ? { r: 0, g: 0, b: 0, a: 0 } : { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
   p.setPipeline(pipeV2); p.setBindGroup(0, drawV2BG); p.draw(3); p.end();
@@ -1044,6 +1058,10 @@ function setView(id) {
   sim.view = id;
   vid.style.visibility = id === 'src' ? 'visible' : 'hidden';
   canvas.style.visibility = id !== 'src' ? 'visible' : 'hidden';
+  const land = id === 'v3';
+  const cw = land ? BW : OW, ch = land ? BH : OH;
+  if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+  $('#stage').classList.toggle('land', land);
   if (id !== 'src') sim.boost = 8;
   if (id === 'v2' || id === 'v3') loadSegmenter();
   document.querySelectorAll('#versions button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
@@ -1056,7 +1074,7 @@ for (const v of versions) {
   const b = document.createElement('button'); b.textContent = v.label; b.dataset.id = v.id;
   b.onclick = () => setView(v.id); $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1176,7 +1194,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
