@@ -496,6 +496,16 @@ ${bilFn('bhl', 'hl')}
     let da = clamp((onf*0.5 - abs(fract(u) - 0.5))/fx + 0.5, 0.0, 1.0);
     a = a*select(da, 1.0, onf > 0.999);
   }
+  // outline mode: stroke on the subject silhouette, a paper gap around it, lines stay straight (hard edge)
+  let ol = select(0.0, 1.0, !bill && q.b.x > 0.5 && q.b.x < 1.5);
+  let hm = bhs(p);
+  let gx = bhs(p + vec2f(1.0, 0.0)) - bhs(p - vec2f(1.0, 0.0));
+  let gy = bhs(p + vec2f(0.0, 1.0)) - bhs(p - vec2f(0.0, 1.0));
+  let sd = clamp((hm - 0.5)/max(length(vec2f(gx, gy))*0.5, 1e-4)*2.0, -300.0, 300.0);   // signed distance to the silhouette, output px
+  let ow = q.b.w*ol; let gap = q.d.w*ol;
+  let ao = clamp(ow*0.5 - abs(sd) + 0.5, 0.0, 1.0)*step(0.5, ow);
+  let hal = clamp(ow*0.5 + gap - abs(sd) + 0.5, 0.0, 1.0)*ol;
+  a = max(a*(1.0 - hal), ao);
   return vec4f(mix(q.d.rgb, q.c.rgb, a), 1.0);
 }
 `;
@@ -675,7 +685,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v3s: 12, v3r: 70, v3a: 0.035, v3b: 0.45, v3d: 14, v3z: 0.22,
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 1, v2o: 4, v2g: 3, v3s: 12, v3r: 70, v3a: 0.035, v3b: 0.45, v3d: 14, v3z: 0.22,
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -852,7 +862,7 @@ function encodeV2(enc, bill = false) {
   const rgb = (c) => c.map((x) => x / 255);
   const u = bill
     ? [OW, OH, P.v3s, P.v3r, P.v2m, P.v3a, P.v3b, P.v3z, 0, 0, 0, 1, 1, 1, 1, P.v3d]
-    : [OW, OH, P.v2s, P.v2r, P.v2m, P.v2a, P.v2b, 0, ...rgb(P.fg), 0, ...rgb(P.bgc), 1];
+    : [OW, OH, P.v2s, P.v2r, P.v2mode, P.v2a, P.v2b, P.v2o, ...rgb(P.fg), 0, ...rgb(P.bgc), P.v2g];
   device.queue.writeBuffer(B.v2u, 0, new Float32Array(u));
   const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
@@ -1046,7 +1056,7 @@ for (const v of versions) {
   const b = document.createElement('button'); b.textContent = v.label; b.dataset.id = v.id;
   b.onclick = () => setView(v.id); $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1054,6 +1064,22 @@ for (const [id, key] of Object.entries(sliders)) {
 }
 $('#cam').onclick = useCamera;
 $('#v2m').onchange = (e) => { P.v2m = parseInt(e.target.value); };
+$('#v2mode').onchange = (e) => { P.v2mode = parseInt(e.target.value); };
+$('#limtog').onchange = (e) => $('#settings').classList.toggle('lim', e.target.checked);
+for (const id of Object.keys(sliders)) {              // editable min / max under every slider
+  const el = $('#' + id), row = el.parentElement;
+  const lim = document.createElement('div'); lim.className = 'lim';
+  lim.innerHTML = '<span>min</span><input type="number" step="any"><span>max</span><input type="number" step="any">';
+  row.append(lim);
+  const [mi, ma] = lim.querySelectorAll('input'); mi.value = el.min; ma.value = el.max;
+  const setLim = () => {
+    const a = parseFloat(mi.value), b = parseFloat(ma.value);
+    if (!(a < b)) { mi.value = el.min; ma.value = el.max; return; }
+    el.min = a; el.max = b; el.value = Math.min(b, Math.max(a, parseFloat(el.value)));
+    el.dispatchEvent(new Event('input'));
+  };
+  mi.onchange = setLim; ma.onchange = setLim; el.limInputs = [mi, ma];
+}
 $('#mirror').onchange = (e) => { P.mirror = e.target.checked; if (camStream) vid.style.transform = P.mirror ? 'scaleX(-1)' : ''; };
 $('#subject').onchange = async (e) => { P.subject = parseInt(e.target.value); if (P.subject) await loadSegmenter(); sim.boost = 8; };
 $('#key').onchange = (e) => { P.key = e.target.checked; sim.boost = 6; };
@@ -1151,15 +1177,20 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key'];
 function snapshotSettings() {
-  const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {} };
+  const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
+  for (const id of Object.keys(sliders)) o.l[id] = [$('#' + id).min, $('#' + id).max];
   SAVE_IDS.forEach((id) => { o.v[id] = $('#' + id).value; });
   SAVE_CB.forEach((id) => { o.c[id] = $('#' + id).checked; });
   return o;
 }
 function applySettings(o) {
+  for (const [id, mm] of Object.entries(o.l || {})) {
+    const el = $('#' + id); if (!el) continue;
+    el.min = mm[0]; el.max = mm[1]; if (el.limInputs) { el.limInputs[0].value = mm[0]; el.limInputs[1].value = mm[1]; }
+  }
   for (const [id, val] of Object.entries(o.v || {})) {
     const el = $('#' + id); if (!el) continue;
     el.value = val; el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input'));
