@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261024125258">
+<meta name="build" content="20261024130451">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -32,8 +32,7 @@
   #drop { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:#000c; color:#fff; font-size:16px; }
   .note { color:var(--dim); font-size:12px; }
   [hidden] { display:none !important; }
-  .ctl .lim { grid-column:1/-1; display:none; gap:6px; align-items:center; color:var(--dim); font-size:11px; }
-  #settings.lim .ctl .lim { display:flex; }
+  .ctl .lim { grid-column:1/-1; display:flex; gap:6px; align-items:center; color:var(--dim); font-size:11px; }
   .lim input { width:68px; background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:2px 4px; font:inherit; }
 </style>
 </head>
@@ -47,7 +46,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.1 (2026-10-24 12:52)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.2 (2026-10-24 13:04)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -58,8 +57,7 @@
     </div>
     <div id="settings">
       <h2 id="setHead">Settings</h2>
-      <label class="note"><input type="checkbox" id="limtog"> edit slider min / max</label>
-      <div class="ctl" data-views="gpu,v2"><span>Line / paper</span><span><input type="color" id="fg" value="#d23219"> <input type="color" id="bg" value="#f2f0ee"></span><span></span></div>
+            <div class="ctl" data-views="gpu,v2"><span>Line / paper</span><span><input type="color" id="fg" value="#d23219"> <input type="color" id="bg" value="#f2f0ee"></span><span></span></div>
       <div class="ctl" data-views="gpu"><span>Stroke px</span><input type="range" id="stroke" min="1" max="6" step="0.25" value="4.75"><output></output></div>
       <div class="ctl" data-views="gpu,bit8"><span>Rmin</span><input type="range" id="rmin" min="2.5" max="6" step="0.05" value="3.05"><output></output></div>
       <div class="ctl" data-views="gpu,bit8"><span>Rmax</span><input type="range" id="rmax" min="10" max="30" step="0.25" value="13.75"><output></output></div>
@@ -71,8 +69,8 @@
       <div class="ctl" data-views="v2"><span>Relief</span><input type="range" id="v2r" min="0" max="160" step="2" value="70"><output></output></div>
       <div class="ctl" data-views="v2"><span>Thin line</span><input type="range" id="v2a" min="0.02" max="0.4" step="0.01" value="0.08"><output></output></div>
       <div class="ctl" data-views="v2"><span>Thick line</span><input type="range" id="v2b" min="0.5" max="1" step="0.01" value="0.9"><output></output></div>
-      <div class="ctl" data-views="v2"><span>Foreground</span><select id="v2mode"><option value="1" selected>Outline (hard edge)</option><option value="0">Relief (curved)</option><option value="2">Straight (flat)</option></select><span></span></div>
-      <div class="ctl" data-views="v2"><span>Outline px</span><input type="range" id="v2o" min="0" max="12" step="0.25" value="4"><output></output></div>
+      <div class="ctl" data-views="v2"><span>Foreground</span><select id="v2mode"><option value="0" selected>Relief (curved)</option><option value="2">Straight (flat)</option></select><span></span></div>
+      <div class="ctl" data-views="v2"><span>Outline px (0 = off)</span><input type="range" id="v2o" min="0" max="12" step="0.25" value="4"><output></output></div>
       <div class="ctl" data-views="v2"><span>Outline gap px</span><input type="range" id="v2g" min="0" max="12" step="0.25" value="3"><output></output></div>
       <div class="ctl" data-views="v3"><span>Foreground</span><select id="v2m"><option value="0">Relief (curved)</option><option value="2">Straight (flat)</option></select><span></span></div>
       <div class="ctl" data-views="v3"><span>Spacing</span><input type="range" id="v3s" min="6" max="30" step="1" value="12"><output></output></div>
@@ -102,6 +100,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261024125258"></script>
+<script type="module" src="gpu_line.js?b=20261024130451"></script>
 </body>
 </html>

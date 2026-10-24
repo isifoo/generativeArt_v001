@@ -496,8 +496,8 @@ ${bilFn('bhl', 'hl')}
     let da = clamp((onf*0.5 - abs(fract(u) - 0.5))/fx + 0.5, 0.0, 1.0);
     a = a*select(da, 1.0, onf > 0.999);
   }
-  // outline mode: stroke on the subject silhouette, a paper gap around it, lines stay straight (hard edge)
-  let ol = select(0.0, 1.0, !bill && q.b.x > 0.5 && q.b.x < 1.5);
+  // outline: stroke on the subject silhouette plus a paper gap around it (works with relief or straight lines)
+  let ol = select(0.0, 1.0, !bill);
   let hm = bhs(p);
   let gx = bhs(p + vec2f(1.0, 0.0)) - bhs(p - vec2f(1.0, 0.0));
   let gy = bhs(p + vec2f(0.0, 1.0)) - bhs(p - vec2f(0.0, 1.0));
@@ -685,7 +685,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 1, v2o: 4, v2g: 3, v3s: 12, v3r: 70, v3a: 0.035, v3b: 0.45, v3d: 14, v3z: 0.22,
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 12, v3r: 70, v3a: 0.035, v3b: 0.45, v3d: 14, v3z: 0.22,
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -1065,7 +1065,6 @@ for (const [id, key] of Object.entries(sliders)) {
 $('#cam').onclick = useCamera;
 $('#v2m').onchange = (e) => { P.v2m = parseInt(e.target.value); };
 $('#v2mode').onchange = (e) => { P.v2mode = parseInt(e.target.value); };
-$('#limtog').onchange = (e) => $('#settings').classList.toggle('lim', e.target.checked);
 for (const id of Object.keys(sliders)) {              // editable min / max under every slider
   const el = $('#' + id), row = el.parentElement;
   const lim = document.createElement('div'); lim.className = 'lim';
