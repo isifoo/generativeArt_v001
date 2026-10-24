@@ -522,6 +522,90 @@ ${bilFn('bmk', 'mk')}
 }
 `;
 
+
+const DRAWV4 = /* wgsl */`
+struct V4 { a:vec4f, b:vec4f, c:vec4f, d:vec4f };
+@group(0) @binding(0) var<uniform> q:V4;
+@group(0) @binding(1) var<storage, read> st: array<f32>;
+@group(0) @binding(2) var<storage, read> mk: array<f32>;
+${bilFn('bst', 'st')}
+${bilFn('bmk', 'mk')}
+@vertex fn vs(@builtin(vertex_index) i:u32) -> @builtin(position) vec4f {
+  let p = array<vec2f,3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
+  return vec4f(p[i], 0.0, 1.0);
+}
+const H3 = 0.8660254;
+struct Cell { kind:i32, ci:i32, cj:i32, u:f32, v:f32, o:vec2f, e1:vec2f, e2:vec2f, gu:f32, gv:f32 };
+fn lat(i:i32, j:i32, M:f32) -> vec2f { return vec2f(f32(i)*H3*M, (f32(i)*0.5 + f32(j))*M); }
+// rhombille tiling of the triangular lattice: every triangle has exactly one omitted edge, the two triangles around it make one rhombus
+fn cellAt(p:vec2f, M:f32) -> Cell {
+  let h = H3*M;
+  let al = p.x/h; let be = (p.y - al*M*0.5)/M;
+  let fi = floor(al); let fj = floor(be);
+  let i = i32(fi); let j = i32(fj);
+  let upper = (al - fi) + (be - fj) >= 1.0;
+  let m = ((i - j) % 3 + 3) % 3;
+  var kind = 2; var ci = i; var cj = j;
+  if (!upper) { if (m == 0) { kind = 0; } else if (m == 1) { kind = 1; } }
+  else { if (m == 1) { kind = 0; cj = j + 1; } else if (m == 0) { kind = 1; ci = i + 1; } }
+  let A = vec2f(h, M*0.5); let B = vec2f(0.0, M); let D = A - B;
+  var c: Cell; c.kind = kind; c.ci = ci; c.cj = cj;
+  if (kind == 1) { c.o = lat(ci - 1, cj + 1, M); c.e1 = D; c.e2 = A; }
+  else if (kind == 0) { c.o = lat(ci, cj, M); c.e1 = B; c.e2 = D; }
+  else { c.o = lat(ci, cj, M); c.e1 = A; c.e2 = B; }
+  let det = c.e1.x*c.e2.y - c.e1.y*c.e2.x;
+  let r = p - c.o;
+  c.u = clamp((r.x*c.e2.y - r.y*c.e2.x)/det, 0.0, 1.0);
+  c.v = clamp((c.e1.x*r.y - c.e1.y*r.x)/det, 0.0, 1.0);
+  c.gu = length(vec2f(c.e2.y, -c.e2.x))/abs(det);
+  c.gv = length(vec2f(-c.e1.y, c.e1.x))/abs(det);
+  return c;
+}
+fn hash2(a:i32, b:i32) -> f32 {
+  var x = u32(a)*374761393u + u32(b)*668265263u + 12345u;
+  x = (x ^ (x >> 13u))*1274126177u; x = x ^ (x >> 16u);
+  return f32(x & 65535u)/65535.0;
+}
+fn toCanvas(pp:vec2f) -> vec2f { return vec2f(pp.x, -pp.y); }
+fn levelAt(pp:vec2f) -> f32 {
+  let sp = toCanvas(pp)*0.5;
+  let dd = clamp(bst(sp)*1.6 - 0.08, 0.0, 1.0);
+  let L = q.b.x;
+  let lv = min(floor(dd*L), L - 1.0);
+  return select(q.c.w, lv, bmk(sp) > 0.5);
+}
+fn cov(d:f32, w:f32) -> f32 { return clamp(w*0.5 - d + 0.5, 0.0, 1.0); }
+@fragment fn fs(@builtin(position) f:vec4f) -> @location(0) vec4f {
+  let s = q.a.z; let N = q.a.w; let M = s*N;
+  let pp = vec2f(f.x, -f.y);
+  let c = cellAt(pp, M);
+  let fu = c.u*N; let fv = c.v*N;
+  let iu = min(floor(fu), N - 1.0); let iv = min(floor(fv), N - 1.0);
+  let cen = c.o + (c.e1*(iu + 0.5) + c.e2*(iv + 0.5))/N;
+  let lv = levelAt(cen);
+  let su = select(-1.0, 1.0, fract(fu) > 0.5); let sv = select(-1.0, 1.0, fract(fv) > 0.5);
+  let lvU = levelAt(cen + c.e1*su/N); let lvV = levelAt(cen + c.e2*sv/N);
+  let L = q.b.x;
+  var tone = 0.80;
+  if (c.kind == 0) { tone = 0.60; } else if (c.kind == 2) { tone = 0.94; }
+  if (c.kind != 1 && hash2(c.ci, c.cj*7 + c.kind) < q.b.z) { tone = 1.54 - tone; }
+  let depth = q.b.y;
+  let val = clamp(tone - depth*lv/max(L - 1.0, 1.0), 0.0, 1.0);
+  var col = mix(q.c.rgb, q.d.rgb, val);
+  let fru = min(fract(fu), 1.0 - fract(fu))/(N*c.gu);
+  let frv = min(fract(fv), 1.0 - fract(fv))/(N*c.gv);
+  let lw = q.d.w;
+  let heavyU = select(q.b.w, 1.0, abs(lvU - lv) > 0.5);
+  let heavyV = select(q.b.w, 1.0, abs(lvV - lv) > 0.5);
+  var ink = cov(fru, lw*(0.6 + 0.8*heavyU))*heavyU;
+  ink = max(ink, cov(frv, lw*(0.6 + 0.8*heavyV))*heavyV);
+  let mu = min(c.u, 1.0 - c.u)/c.gu; let mv = min(c.v, 1.0 - c.v)/c.gv;
+  ink = max(ink, max(cov(mu, lw*2.0), cov(mv, lw*2.0)));
+  col = mix(col, q.c.rgb, clamp(ink, 0.0, 1.0));
+  return vec4f(col, 1.0);
+}
+`;
+
 const BLIT = /* wgsl */`
 struct BU { ps:vec4f };
 @group(0) @binding(0) var low: texture_2d<f32>;
@@ -599,6 +683,14 @@ const v2bgl = device.createBindGroupLayout({ entries: [
   { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }] });
 const pipeV2 = device.createRenderPipeline({ layout: device.createPipelineLayout({ bindGroupLayouts: [v2bgl] }), vertex: { module: mV2, entryPoint: 'vs' },
   fragment: { module: mV2, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' } });
+const mV4 = device.createShaderModule({ code: DRAWV4 });
+mV4.getCompilationInfo().then((ci) => { for (const m of ci.messages) if (m.type === 'error') msg(`V4 shader line ${m.lineNum}: ${m.message}`); });
+const v4bgl = device.createBindGroupLayout({ entries: [
+  { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+  { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+  { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }] });
+const pipeV4 = device.createRenderPipeline({ layout: device.createPipelineLayout({ bindGroupLayouts: [v4bgl] }), vertex: { module: mV4, entryPoint: 'vs' },
+  fragment: { module: mV4, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' } });
 let low = null;     // low-res target, rebuilt when the pixel size changes
 function ensureLow(ps) {
   if (low && low.ps === ps) return low;
@@ -622,7 +714,7 @@ const B = {
   gray: mk(F32, S), keyr: mk(F32, S), keyA: mk(F32, S), keyB: mk(F32, S), keyC: mk(F32, S),
   lut: mk(36 * 256 * 4, S), hist2: mk(256 * 4, S | CD), stretch: mk(16, S),
   cl: mk(F32, S), dg: mk(F32, S), dtmp: mk(F32, S), dgb: mk(F32, S),
-  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
+  mask: mk(F32, S | CD), hS: mk(F32, S), hL: mk(F32, S), v2u: mk(96, GPUBufferUsage.UNIFORM | CD), v4u: mk(64, GPUBufferUsage.UNIFORM | CD), state: mk(F32, S), R: mk(F32, S | CD), wake: mk(F32, S), wakeT: mk(F32, S), wakeD: mk(F32, S),
   na: mk(NGW * NGH * 4, S | CD), nb: mk(NGW * NGH * 4, S | CD),
   meta: mk(16, S | CD | CSRC), args: mk(48, S | GPUBufferUsage.INDIRECT | CD),
   pos: mk(MAXN * 8, S | CD), mv: mk(MAXN * 16, S), head: mk(GW * GH * 4, S), nxt: mk(MAXN * 4, S),
@@ -671,6 +763,7 @@ const drawBG = device.createBindGroup({ layout: drawPipe.getBindGroupLayout(0),
 
 const drawV2BG = device.createBindGroup({ layout: v2bgl,
   entries: [{ binding: 0, resource: { buffer: B.v2u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.hS } }, { binding: 3, resource: { buffer: B.hL } }, { binding: 4, resource: { buffer: B.mask } }] });
+const drawV4BG = device.createBindGroup({ layout: v4bgl, entries: [{ binding: 0, resource: { buffer: B.v4u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.mask } }] });
 const draw8BG = device.createBindGroup({ layout: pipe8.getBindGroupLayout(0),
   entries: [{ binding: 0, resource: { buffer: B.du8 } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }, { binding: 3, resource: { buffer: B.state } }] });
 
@@ -698,7 +791,7 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: LAND ? 'rvm' : 'mp', rvmRes: 640, rvmRatio: 0.5, v3int: 1, v3p: 6, v3res: 1536, v3auto: true, v3c: [215, 212, 212],
+const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: LAND ? 'rvm' : 'mp', rvmRes: 640, rvmRatio: 0.5, v4s: 22, v4n: 4, v4l: 4, v4d: 0.75, v4f: 0.25, v4w: 1.2, v4b: 0, v4a: 0.35, v4i: [20, 20, 22], v4p: [240, 238, 234], v3int: 1, v3p: 6, v3res: 1536, v3auto: true, v3c: [215, 212, 212],
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
@@ -861,7 +954,7 @@ function trackBox(m) {
   box.x0 += (x0 - box.x0) * k; box.x1 += (x1 - box.x1) * k; box.y0 += (y0 - box.y0) * k; box.y1 += (y1 - box.y1) * k;
 }
 function pushMask(a) {
-  if (sim.view === 'v3') { trackBox(a); } else if (sim.view === 'v2') {            // temporal smoothing of the subject mask: kills the flicker
+  if (sim.view === 'v3') { trackBox(a); } else if (sim.view === 'v2' || sim.view === 'v4') {            // temporal smoothing of the subject mask: kills the flicker
     if (!seg.cur) { seg.cur = new Float32Array(SW * SH); seg.cur.set(a); }
     const s = P.smodel === 'rvm' ? P.v3m * 0.5 : P.v3m, n = SW * SH, cur = seg.cur;   // the matting model is already temporally stable
     for (let i = 0; i < n; i++) cur[i] = cur[i] * s + a[i] * (1 - s);
@@ -958,8 +1051,8 @@ function stillTick() {
 $('#capnow').onclick = () => stillCycle();
 function segment() {
   if (sim.view === 'v3') return;                         // V3 captures stills, see stillCycle
-  if (P.smodel === 'rvm' && (sim.view === 'v2' || sim.view === 'v3')) { rvmKick(); return; }
-  if (!seg.ready || (P.subject === 0 && sim.view !== 'v2' && sim.view !== 'v3')) { seg.ms = 0; return; }
+  if (P.smodel === 'rvm' && (sim.view === 'v2' || sim.view === 'v3' || sim.view === 'v4')) { rvmKick(); return; }
+  if (!seg.ready || (P.subject === 0 && sim.view !== 'v2' && sim.view !== 'v3' && sim.view !== 'v4')) { seg.ms = 0; return; }
   const t0 = performance.now();
   seg.ts = Math.max(seg.ts + 1, Math.round(performance.now()));
   modelFrame(512);
@@ -1042,6 +1135,15 @@ function encodeV2(enc, bill = false) {
 }
 
 
+function encodeV4(enc) {
+  const rgb = (c) => c.map((x) => x / 255);
+  device.queue.writeBuffer(B.v4u, 0, new Float32Array([OW, OH, P.v4s, P.v4n, P.v4l, P.v4d, P.v4f, P.v4a, ...rgb(P.v4i), P.v4b, ...rgb(P.v4p), P.v4w]));
+  const d = { colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 1, b: 1, a: 1 } }] };
+  if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
+  const p = enc.beginRenderPass(d);
+  p.setPipeline(pipeV4); p.setBindGroup(0, drawV4BG); p.draw(3); p.end();
+}
+
 function drawBit8(enc) {
   const L = ensureLow(P.px);
   device.queue.writeBuffer(B.du8, 0, new Float32Array([SCALE / P.px, 0.6, L.w, L.h, 0, 0, 0, 1, 0, 0, 0, 0]));
@@ -1069,6 +1171,7 @@ async function tick({ full = false, steps = null, wait = false } = {}) {
   timing = true;
   encodeField(enc);
   if (sim.view === 'v2' || sim.view === 'v3') { encodeV2(enc, sim.view === 'v3'); return finishTick(enc, tUp, t1, false); }
+  if (sim.view === 'v4') { encodeV4(enc); return finishTick(enc, tUp, t1, false); }
   const nIter = steps ?? (sim.boost > 0 ? P.iters * 2 : P.iters);
   if (!sim.warmed) {
     sim.warmed = true;
@@ -1210,6 +1313,7 @@ const versions = [
   { id: 'gpu', label: 'V1 Line' },
   { id: 'v2', label: 'V2 Line' },
   { id: 'v3', label: 'V3 100$' },
+  { id: 'v4', label: 'V4 Iso Cubes' },
   { id: 'bit8', label: '8 bit' },
 ];
 function setView(id) {
@@ -1221,7 +1325,8 @@ function setView(id) {
   if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
   $('#stage').classList.toggle('land', land);
   if (id !== 'src') sim.boost = 8;
-  if (id === 'v2' || id === 'v3') loadSegmenter();
+  if (id === 'v2' || id === 'v3' || id === 'v4') loadSegmenter();
+  if (id === 'v4' && P.smodel === 'rvm') loadRvm();
   if (id === 'v3') { still.last = 0; if (P.smodel === 'rvm') loadRvm(); }
   document.querySelectorAll('#versions button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
   const vl = versions.find((v) => v.id === id);
@@ -1234,7 +1339,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1263,6 +1368,8 @@ $('#key').onchange = (e) => { P.key = e.target.checked; sim.boost = 6; };
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 $('#smodel').onchange = async (e) => { P.smodel = e.target.value; if (P.smodel === 'rvm') await loadRvm(); };
 $('#v3auto').onchange = (e) => { P.v3auto = e.target.checked; };
+$('#v4i').oninput = (e) => { P.v4i = hex(e.target.value); };
+$('#v4p').oninput = (e) => { P.v4p = hex(e.target.value); };
 $('#v3c').oninput = (e) => { P.v3c = hex(e.target.value); };
 $('#fg').oninput = (e) => { P.fg = hex(e.target.value); };
 $('#bg').oninput = (e) => { P.bgc = hex(e.target.value); };
@@ -1357,7 +1464,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
