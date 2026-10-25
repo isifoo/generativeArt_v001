@@ -60,7 +60,8 @@ export function frame(vid, P) {
     const a = d[i] * rng;
     obj.rotation.set(P.v5ax === 1 ? a : 0, P.v5ax === 0 ? a : 0, P.v5ax === 2 ? a : 0);
     obj.updateMatrix(); mesh.setMatrixAt(i, obj.matrix);
-    col.setRGB(pap[0] + (ink[0] - pap[0]) * d[i], pap[1] + (ink[1] - pap[1]) * d[i], pap[2] + (ink[2] - pap[2]) * d[i]);
+    if (P.v5col === 1) col.setRGB(px[i * 4] / 255, px[i * 4 + 1] / 255, px[i * 4 + 2] / 255, T.SRGBColorSpace);
+    else col.setRGB(pap[0] + (ink[0] - pap[0]) * d[i], pap[1] + (ink[1] - pap[1]) * d[i], pap[2] + (ink[2] - pap[2]) * d[i]);
     mesh.setColorAt(i, col);
   }
   mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true;
