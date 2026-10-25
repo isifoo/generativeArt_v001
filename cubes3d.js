@@ -73,16 +73,16 @@ export function frame(vid, P, mk) {
     d[i] += (dk - d[i]) * (1 - sm);
     obj.position.set((i % cols + 0.5) * cs - 540, 960 - (Math.floor(i / cols) + 0.5) * cs, 0);
     let a = d[i] * rng;
-    if (bw) {                                                              // flip between black and white with an eased 90 degree turn
-      const dark = dk > P.v5th + (st.tg[i] ? -0.06 : 0.06);
-      st.tg[i] = dark ? 1 : 0;
-      st.s[i] = Math.min(1, Math.max(0, st.s[i] + (dark ? 1 : -1) * dt * P.v5sp));
+    if (bw) {                                                              // subject: N grey levels, light grey to black, each one a further turn; background: white, no turn
+      const N = P.v5lv, dq = Math.min(1, Math.max(0, d[i] + 0.5 - P.v5th)), lvl = Math.min(N - 1, Math.floor(dq * N));
+      const tgt = ((lvl + 1) / N) * (1 - bgA);
+      st.s[i] += Math.max(-1, Math.min(1, (tgt - st.s[i]) * 20 * dt * P.v5sp / 4));
       const e = st.s[i] * st.s[i] * (3 - 2 * st.s[i]);
       a = (P.v5ax === 0 ? -1 : 1) * e * Math.PI / 2;
     }
     obj.rotation.set(P.v5ax === 1 ? a : 0, P.v5ax === 0 ? a : 0, P.v5ax === 2 ? a : 0);
     obj.updateMatrix(); mesh.setMatrixAt(i, obj.matrix);
-    if (bw) { const g = 1 - P.v5bl * bgA; col.setRGB(g, g, g); }
+    if (bw) { const g = 1 - 0.55 * st.s[i]; col.setRGB(g, g, g); }
     else if (P.v5col === 1) {
       const gl = (k) => pap[k] + (ink[k] - pap[k]) * P.v5bl;
       col.setRGB(px[i * 4] / 255, px[i * 4 + 1] / 255, px[i * 4 + 2] / 255, T.SRGBColorSpace);
