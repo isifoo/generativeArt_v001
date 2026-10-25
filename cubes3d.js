@@ -8,9 +8,9 @@ export async function show(on, stage, vid, P) {
     const renderer = new T.WebGLRenderer({ canvas: cv, antialias: true });
     renderer.setPixelRatio(1); renderer.setSize(1080, 1920, false);
     const scene = new T.Scene();
-    const cam = new T.OrthographicCamera(-540, 540, 960, -960, -2000, 2000);
-    scene.add(new T.AmbientLight(0xffffff, 1.0));
-    const dl = new T.DirectionalLight(0xffffff, 0.6); dl.position.set(-300, 500, 800); scene.add(dl);
+    const cam = new T.PerspectiveCamera(35, 1080 / 1920, 10, 20000);
+    scene.add(new T.AmbientLight(0xffffff, 0.55));
+    const dl = new T.DirectionalLight(0xffffff, 1.1); dl.position.set(-500, 800, 900); scene.add(dl);
     st = { cv, renderer, scene, cam, mesh: null, key: '', samp: document.createElement('canvas'), d: null, lo: 0, hi: 1 };
   }
   st.cv.style.visibility = on ? 'visible' : 'hidden';
@@ -63,6 +63,11 @@ export function frame(vid, P) {
     mesh.setColorAt(i, col);
   }
   mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true;
+  // real perspective: the camera sits in front of the grid and drifts sideways by the tilt, so the sides of the cubes show
+  const fov = P.v5f, dist = 960 / Math.tan(fov * Math.PI / 360), tl = P.v5t * Math.PI / 180;
+  st.cam.fov = fov; st.cam.updateProjectionMatrix();
+  st.cam.position.set(Math.sin(tl) * dist * 0.6, Math.sin(tl) * dist * 0.4, Math.cos(tl) * dist);
+  st.cam.lookAt(0, 0, 0);
   st.renderer.setClearColor(new T.Color(pap[0], pap[1], pap[2]));
   st.renderer.render(st.scene, st.cam);
 }
