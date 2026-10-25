@@ -19,15 +19,18 @@ export async function show(on, stage, vid, P) {
 function build(P) {
   const s = P.v5s, g = P.v5g;
   const cols = Math.max(2, Math.round(1080 / s)), rows = Math.max(2, Math.round(1920 / s));
-  const key = [cols, rows, g].join();
+  const key = [cols, rows, g, P.v5col === 2].join();
   if (key === st.key) return;
   st.key = key; st.cols = cols; st.rows = rows;
-  if (st.mesh) { st.scene.remove(st.mesh); st.mesh.geometry.dispose(); st.mesh.material.dispose(); }
+  if (st.mesh) { st.scene.remove(st.mesh); st.mesh.geometry.dispose(); [].concat(st.mesh.material).forEach((m) => m.dispose()); }
   const cs = 1080 / cols;
-  const mesh = new T.InstancedMesh(new T.BoxGeometry(cs * g, cs * g, cs * g), new T.MeshLambertMaterial({ color: 0xffffff }), cols * rows);
+  // black and white mode: a cube is white on its front and black on the face that the 90 degree turn brings round (+x for a turn about Y, +y about X)
+  const W = () => new T.MeshLambertMaterial({ color: 0xffffff }), K = () => new T.MeshLambertMaterial({ color: 0x000000 });
+  const mats = P.v5col === 2 ? [K(), W(), K(), W(), W(), W()] : new T.MeshLambertMaterial({ color: 0xffffff });
+  const mesh = new T.InstancedMesh(new T.BoxGeometry(cs * g, cs * g, cs * g), mats, cols * rows);
   mesh.instanceColor = new T.InstancedBufferAttribute(new Float32Array(cols * rows * 3), 3);
   st.cs = cs; st.mesh = mesh; st.scene.add(mesh);
-  st.samp.width = cols; st.samp.height = rows; st.d = new Float32Array(cols * rows);
+  st.samp.width = cols; st.samp.height = rows; st.d = new Float32Array(cols * rows); st.s = new Float32Array(cols * rows); st.tg = new Uint8Array(cols * rows);
 }
 let obj = null;
 export function frame(vid, P) {
@@ -51,16 +54,26 @@ export function frame(vid, P) {
   const span = Math.max(0.05, st.hi - st.lo), ink = P.v5i.map((x) => x / 255), pap = P.v5p.map((x) => x / 255);
   const rng = P.v5r * Math.PI / 180, sm = P.v5m, col = new T.Color();
   obj = obj || new T.Object3D();
+  const now = performance.now(), dt = Math.min(0.1, (now - (st.t || now)) / 1000); st.t = now;
+  const bw = P.v5col === 2;
   for (let i = 0; i < raw.length; i++) {
     const norm = Math.min(1, Math.max(0, (raw[i] - st.lo) / span));
     let dk = 1 - Math.pow(norm, P.v5c);                                    // 0 = brightest, 1 = darkest
     dk = Math.min(1, Math.max(0, dk + (dk * dk * (3 - 2 * dk) - dk) * P.v5k));   // S-curve: pushes lights and darks apart
     d[i] += (dk - d[i]) * (1 - sm);
     obj.position.set((i % cols + 0.5) * cs - 540, 960 - (Math.floor(i / cols) + 0.5) * cs, 0);
-    const a = d[i] * rng;
+    let a = d[i] * rng;
+    if (bw) {                                                              // flip between black and white with an eased 90 degree turn
+      const dark = dk > P.v5th + (st.tg[i] ? -0.06 : 0.06);
+      st.tg[i] = dark ? 1 : 0;
+      st.s[i] = Math.min(1, Math.max(0, st.s[i] + (dark ? 1 : -1) * dt * P.v5sp));
+      const e = st.s[i] * st.s[i] * (3 - 2 * st.s[i]);
+      a = (P.v5ax === 0 ? -1 : 1) * e * Math.PI / 2;
+    }
     obj.rotation.set(P.v5ax === 1 ? a : 0, P.v5ax === 0 ? a : 0, P.v5ax === 2 ? a : 0);
     obj.updateMatrix(); mesh.setMatrixAt(i, obj.matrix);
-    if (P.v5col === 1) col.setRGB(px[i * 4] / 255, px[i * 4 + 1] / 255, px[i * 4 + 2] / 255, T.SRGBColorSpace);
+    if (bw) col.setRGB(1, 1, 1);
+    else if (P.v5col === 1) col.setRGB(px[i * 4] / 255, px[i * 4 + 1] / 255, px[i * 4 + 2] / 255, T.SRGBColorSpace);
     else col.setRGB(pap[0] + (ink[0] - pap[0]) * d[i], pap[1] + (ink[1] - pap[1]) * d[i], pap[2] + (ink[2] - pap[2]) * d[i]);
     mesh.setColorAt(i, col);
   }
