@@ -53,7 +53,8 @@ export function frame(vid, P) {
   obj = obj || new T.Object3D();
   for (let i = 0; i < raw.length; i++) {
     const norm = Math.min(1, Math.max(0, (raw[i] - st.lo) / span));
-    const dk = 1 - Math.pow(norm, P.v5c);                                  // 0 = brightest, 1 = darkest
+    let dk = 1 - Math.pow(norm, P.v5c);                                    // 0 = brightest, 1 = darkest
+    dk = Math.min(1, Math.max(0, dk + (dk * dk * (3 - 2 * dk) - dk) * P.v5k));   // S-curve: pushes lights and darks apart
     d[i] += (dk - d[i]) * (1 - sm);
     obj.position.set((i % cols + 0.5) * cs - 540, 960 - (Math.floor(i / cols) + 0.5) * cs, 0);
     const a = d[i] * rng;
