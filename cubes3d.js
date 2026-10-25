@@ -30,10 +30,10 @@ function build(P) {
   const mesh = new T.InstancedMesh(new T.BoxGeometry(cs * g, cs * g, cs * g), mats, cols * rows);
   mesh.instanceColor = new T.InstancedBufferAttribute(new Float32Array(cols * rows * 3), 3);
   st.cs = cs; st.mesh = mesh; st.scene.add(mesh);
-  st.samp.width = cols; st.samp.height = rows; st.d = new Float32Array(cols * rows); st.s = new Float32Array(cols * rows); st.tg = new Uint8Array(cols * rows);
+  st.samp.width = cols; st.samp.height = rows; st.d = new Float32Array(cols * rows); st.s = new Float32Array(cols * rows); st.tg = new Uint8Array(cols * rows); st.ms = new Float32Array(cols * rows).fill(1);
 }
 let obj = null;
-export function frame(vid, P) {
+export function frame(vid, P, mk) {
   if (!st || st.cv.style.visibility === 'hidden' || vid.readyState < 2 || !vid.videoWidth) return;
   build(P);
   const { cols, rows, cs, mesh, samp, d } = st;
@@ -60,6 +60,16 @@ export function frame(vid, P) {
     const norm = Math.min(1, Math.max(0, (raw[i] - st.lo) / span));
     let dk = 1 - Math.pow(norm, P.v5c);                                    // 0 = brightest, 1 = darkest
     dk = Math.min(1, Math.max(0, dk + (dk * dk * (3 - 2 * dk) - dk) * P.v5k));   // S-curve: pushes lights and darks apart
+    // object separator: how much of the subject sits in this cube (video space mask), smoothed over time
+    let mv = 1;
+    if (mk) {
+      const cx = i % cols, cy = (i / cols) | 0;
+      const u = (vw - cw) / 2 + (((P.mirror ? cols - 1 - cx : cx) + 0.5) / cols) * cw, v = (vh - ch) / 2 + ((cy + 0.5) / rows) * ch;
+      const m0 = mk.d[Math.min(mk.h - 1, (v / vh * mk.h) | 0) * mk.w + Math.min(mk.w - 1, (u / vw * mk.w) | 0)];
+      st.ms[i] += (Math.min(1, Math.max(0, (m0 - 0.2) / 0.6)) - st.ms[i]) * 0.5; mv = st.ms[i];
+    }
+    const bgA = P.v5b * (1 - mv);                                          // background cubes are pulled to one flat level
+    dk += ((bw ? 0 : P.v5bl) - dk) * bgA;                                  // flip mode: background cubes rest on white and are greyed below
     d[i] += (dk - d[i]) * (1 - sm);
     obj.position.set((i % cols + 0.5) * cs - 540, 960 - (Math.floor(i / cols) + 0.5) * cs, 0);
     let a = d[i] * rng;
@@ -72,8 +82,12 @@ export function frame(vid, P) {
     }
     obj.rotation.set(P.v5ax === 1 ? a : 0, P.v5ax === 0 ? a : 0, P.v5ax === 2 ? a : 0);
     obj.updateMatrix(); mesh.setMatrixAt(i, obj.matrix);
-    if (bw) col.setRGB(1, 1, 1);
-    else if (P.v5col === 1) col.setRGB(px[i * 4] / 255, px[i * 4 + 1] / 255, px[i * 4 + 2] / 255, T.SRGBColorSpace);
+    if (bw) { const g = 1 - P.v5bl * bgA; col.setRGB(g, g, g); }
+    else if (P.v5col === 1) {
+      const gl = (k) => pap[k] + (ink[k] - pap[k]) * P.v5bl;
+      col.setRGB(px[i * 4] / 255, px[i * 4 + 1] / 255, px[i * 4 + 2] / 255, T.SRGBColorSpace);
+      col.r += (gl(0) - col.r) * bgA; col.g += (gl(1) - col.g) * bgA; col.b += (gl(2) - col.b) * bgA;
+    }
     else col.setRGB(pap[0] + (ink[0] - pap[0]) * d[i], pap[1] + (ink[1] - pap[1]) * d[i], pap[2] + (ink[2] - pap[2]) * d[i]);
     mesh.setColorAt(i, col);
   }

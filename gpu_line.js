@@ -1338,6 +1338,18 @@ function stillTick() {
   if (P.v3int > 0 && performance.now() - still.last >= iv) stillCycle();
 }
 $('#capnow').onclick = () => stillCycle();
+let v5mask = null, v5last = -1;
+function v5Seg() {                                      // subject mask for V5, kept in video space (no sim buffers involved)
+  if (!seg.ready || P.v5b <= 0 || vid.readyState < 2 || vid.currentTime === v5last) return;
+  v5last = vid.currentTime;
+  try {
+    modelFrame(384);
+    seg.ts = Math.max(seg.ts + 1, Math.round(performance.now()));
+    const r = seg.obj.segmentForVideo(mcv, seg.ts), m = r.confidenceMasks[0];
+    v5mask = { d: new Float32Array(m.getAsFloat32Array()), w: m.width, h: m.height };
+    m.close(); r.close && r.close();
+  } catch (e) { msg('V5 separator failed: ' + e.message); P.v5b = 0; }
+}
 function segment() {
   if (sim.view === 'v3') return;                         // V3 captures stills, see stillCycle
   if (P.smodel === 'rvm' && (sim.view === 'v2' || sim.view === 'v3' || sim.view === 'v4')) { rvmKick(); return; }
@@ -1555,7 +1567,7 @@ let lastMedia = -1;
 function loop() {
   requestAnimationFrame(loop);
   if (sim.view === 'v3') { stillTick(); return; }
-  if (sim.view === 'v5') { if (cubes3d) cubes3d.frame(vid, P); return; }
+  if (sim.view === 'v5') { if (cubes3d) { v5Seg(); cubes3d.frame(vid, P, P.v5b > 0 ? v5mask : null); } return; }
   if (vid.readyState < 2) return;
   const t = vid.currentTime;
   if (t === lastMedia) return;                              // no new video frame yet
@@ -1620,7 +1632,7 @@ function setView(id) {
   if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
   $('#stage').classList.toggle('land', land);
   if (id !== 'src') sim.boost = 8;
-  if (id === 'v2' || id === 'v3' || id === 'v4') loadSegmenter();
+  if (id === 'v2' || id === 'v3' || id === 'v4' || id === 'v5') loadSegmenter();
   if (id === 'v4' && P.smodel === 'rvm') loadRvm();
   if (id === 'v3') { still.last = 0; if (P.smodel === 'rvm') loadRvm(); }
   document.querySelectorAll('#versions button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
@@ -1634,7 +1646,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4y: 'v4y', v5s: 'v5s', v5f: 'v5f', v5k: 'v5k', v5th: 'v5th', v5sp: 'v5sp', v5t: 'v5t', v5g: 'v5g', v5r: 'v5r', v5c: 'v5c', v5m: 'v5m', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4y: 'v4y', v5s: 'v5s', v5f: 'v5f', v5k: 'v5k', v5th: 'v5th', v5b: 'v5b', v5bl: 'v5bl', v5sp: 'v5sp', v5t: 'v5t', v5g: 'v5g', v5r: 'v5r', v5c: 'v5c', v5m: 'v5m', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1763,7 +1775,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5b', 'v5bl', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };

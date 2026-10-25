@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261024203022">
+<meta name="build" content="20261024203352">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.27 (2026-10-24 20:30)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.28 (2026-10-24 20:33)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -110,6 +110,8 @@
       <div class="ctl" data-views="v5"><span>Contrast</span><input type="range" id="v5c" min="0.3" max="3" step="0.05" value="1"><output></output></div>
       <div class="ctl" data-views="v5"><span>Punch (light/dark split)</span><input type="range" id="v5k" min="0" max="2" step="0.05" value="1.3"><output></output></div>
       <div class="ctl" data-views="v5"><span>Flip threshold</span><input type="range" id="v5th" min="0.05" max="0.95" step="0.01" value="0.5"><output></output></div>
+      <div class="ctl" data-views="v5"><span>Tone down background</span><input type="range" id="v5b" min="0" max="1" step="0.01" value="0.85"><output></output></div>
+      <div class="ctl" data-views="v5"><span>Background grey (0 white, 1 black)</span><input type="range" id="v5bl" min="0" max="1" step="0.01" value="0.7"><output></output></div>
       <div class="ctl" data-views="v5"><span>Flip speed (per s)</span><input type="range" id="v5sp" min="0.5" max="12" step="0.1" value="4"><output></output></div>
       <div class="ctl" data-views="v5"><span>Smoothing</span><input type="range" id="v5m" min="0" max="0.95" step="0.01" value="0.5"><output></output></div>
       <div class="ctl" data-views="v5"><span>Turn axis</span><select id="v5ax"><option value="0">Vertical (Y)</option><option value="1">Horizontal (X)</option><option value="2">Towards camera (Z)</option></select><span></span></div>
@@ -148,6 +150,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261024203022"></script>
+<script type="module" src="gpu_line.js?b=20261024203352"></script>
 </body>
 </html>
