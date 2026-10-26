@@ -421,6 +421,36 @@ fn snap(p:vec2f)->vec2f { return select(p, floor(p/du.b.y + 0.5)*du.b.y, du.b.x 
 `;
 
 
+// Line v04: the V1 lines, but darkness comes mostly from line width (tapered per point from the tone field) and only a little from spacing
+const DRAWL4 = /* wgsl */`
+struct DU { a:vec4f, col:vec4f, b:vec4f };
+@group(0) @binding(0) var<uniform> du:DU;
+@group(0) @binding(1) var<storage, read> pts: array<vec2f>;
+@group(0) @binding(2) var<storage, read> mt: array<u32>;
+@group(0) @binding(3) var<storage, read> st: array<f32>;
+fn halfW(p:vec2f)->f32 {
+  let ix = u32(clamp(i32(p.x), 0, ${SW - 1})); let iy = u32(clamp(i32(p.y), 0, ${SH - 1}));
+  let t = clamp(st[iy*${SW}u + ix]*1.6 - 0.08, 0.0, 1.0);
+  return mix(du.b.z, du.b.w, t*t*(3.0 - 2.0*t));
+}
+@vertex fn vs(@builtin(vertex_index) vi:u32, @builtin(instance_index) ii:u32) -> @builtin(position) vec4f {
+  let N = mt[0];
+  let c = array<u32,6>(0u,1u,2u,2u,1u,3u)[vi%6u];
+  let p0 = pts[ii]; let p1 = pts[(ii + 1u) % N];
+  let A = p0*du.a.x; let B = p1*du.a.x;
+  let d = B - A; let l = length(d);
+  let dir = d/max(l, 1e-4); let nrm = vec2f(-dir.y, dir.x);
+  let far = c >= 2u;
+  let e = select(A, B, far);
+  var hw = halfW(select(p0, p1, far)); if (l < 1e-4) { hw = 0.0; }
+  let along = select(-1.0, 1.0, far);
+  let side = select(-1.0, 1.0, (c & 1u) == 1u);
+  let p = e + dir*du.a.y*along + nrm*hw*side;
+  return vec4f(p.x/du.a.z*2.0 - 1.0, 1.0 - p.y/du.a.w*2.0, 0.0, 1.0);
+}
+@fragment fn fs() -> @location(0) vec4f { return du.col; }
+`;
+
 const DRAW8 = /* wgsl */`
 struct DU { a:vec4f, col:vec4f, b:vec4f };
 @group(0) @binding(0) var<uniform> du:DU;
@@ -956,6 +986,10 @@ const drawPipe = device.createRenderPipeline({
   multisample: { count: 4 },
 });
 
+const mL4 = device.createShaderModule({ code: DRAWL4 });
+mL4.getCompilationInfo().then((ci) => { for (const m of ci.messages) if (m.type === 'error') msg(`Line v04 shader line ${m.lineNum}: ${m.message}`); });
+const pipeL4 = device.createRenderPipeline({ layout: 'auto', vertex: { module: mL4, entryPoint: 'vs' },
+  fragment: { module: mL4, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' }, multisample: { count: 4 } });
 const m8 = device.createShaderModule({ code: DRAW8 });
 const pipe8 = device.createRenderPipeline({ layout: 'auto', vertex: { module: m8, entryPoint: 'vs' },
   fragment: { module: m8, entryPoint: 'fs', targets: [{ format: FORMAT }] }, primitive: { topology: 'triangle-list' } });
@@ -1053,6 +1087,8 @@ const drawBG = device.createBindGroup({ layout: drawPipe.getBindGroupLayout(0),
 const drawV2BG = device.createBindGroup({ layout: v2bgl,
   entries: [{ binding: 0, resource: { buffer: B.v2u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.hS } }, { binding: 3, resource: { buffer: B.hL } }, { binding: 4, resource: { buffer: B.mask } }] });
 const drawV4BG = device.createBindGroup({ layout: v4bgl, entries: [{ binding: 0, resource: { buffer: B.v4u } }, { binding: 1, resource: { buffer: B.state } }, { binding: 2, resource: { buffer: B.mask } }] });
+const drawL4BG = device.createBindGroup({ layout: pipeL4.getBindGroupLayout(0),
+  entries: [{ binding: 0, resource: { buffer: B.du } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }, { binding: 3, resource: { buffer: B.state } }] });
 const draw8BG = device.createBindGroup({ layout: pipe8.getBindGroupLayout(0),
   entries: [{ binding: 0, resource: { buffer: B.du8 } }, { binding: 1, resource: { buffer: B.s3 } }, { binding: 2, resource: { buffer: B.meta } }, { binding: 3, resource: { buffer: B.state } }] });
 
@@ -1080,13 +1116,14 @@ function run(enc, k, bgrp, groups, label) {
 const IND_PTS = 0, IND_SCAN = 16;
 
 // ---------------------------------------------------------------- state
-const P = { rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: LAND ? 'rvm' : 'mp', rvmRes: 640, rvmRatio: 0.5, v4s: 22, v4n: 4, v4l: 4, v4d: 0.75, v4f: 0.25, v4w: 1.2, v4b: 0, v4a: 0.35, v5i: [20, 20, 22], v5p: [240, 238, 234], v5ax: 0, v5col: 2, v4i: [20, 20, 22], v4p: [240, 238, 234], v3int: 1, v3p: 6, v3res: 1536, v3auto: true, v3c: [215, 212, 212],
+const P = { l4min: 4.2, l4max: 13.75, l4a: 1.5, l4b: 7, rmin: 3.05, rmax: 13.75, gain: 1.75, noise: 0.22, iters: 6, stroke: 4.75, key: false, mirror: true, subject: 1, px: 6, v2s: 16, v2r: 70, v2a: 0.08, v2b: 0.9, v2m: 0, v2mode: 0, v2o: 4, v2g: 3, v3s: 7, v3r: 37, v3a: 0.035, v3b: 0.45, v3d: 8, v3z: 0.22, v3x: 0.37, v3y: 0, v3k: 1, v3w: 1, v3m: 0.6, smodel: LAND ? 'rvm' : 'mp', rvmRes: 640, rvmRatio: 0.5, v4s: 22, v4n: 4, v4l: 4, v4d: 0.75, v4f: 0.25, v4w: 1.2, v4b: 0, v4a: 0.35, v5i: [20, 20, 22], v5p: [240, 238, 234], v5ax: 0, v5col: 2, v4i: [20, 20, 22], v4p: [240, 238, 234], v3int: 1, v3p: 6, v3res: 1536, v3auto: true, v3c: [215, 212, 212],
   fg: [210, 50, 25], bgc: [242, 240, 238] };
 const sim = { frame: 0, time: 0, boost: 0, inflight: 0, pending: 0, running: true, view: 'gpu', dropped: 0 };
 const U = new Float32Array(16);
 
 function writeU(fullWake, newW) {
-  U.set([sim.time, P.rmin, P.rmax, P.gain, P.noise, fullWake ? 1 : 0, 0.30, 0.6, P.key ? 1 : 0, newW, 2.5, seg.ready && sim.view !== 'v2' && sim.view !== 'v3' ? P.subject : 0]);
+  const l4 = sim.view === 'l4';
+  U.set([sim.time, l4 ? P.l4min : P.rmin, l4 ? P.l4max : P.rmax, P.gain, P.noise, fullWake ? 1 : 0, 0.30, 0.6, P.key ? 1 : 0, newW, 2.5, seg.ready && sim.view !== 'v2' && sim.view !== 'v3' ? P.subject : 0]);
   device.queue.writeBuffer(B.u, 0, U);
 }
 
@@ -1394,7 +1431,8 @@ function encodeStep(enc) {
 function encodeDraw(enc) {
   run(enc, 'smooth', G.sm1, IND_PTS, 'draw: smooth'); run(enc, 'smooth', G.sm2, IND_PTS, 'draw: smooth'); run(enc, 'smooth', G.sm3, IND_PTS, 'draw: smooth');
   if (sim.view === 'bit8') { drawBit8(enc); return; }
-  const dv = new Float32Array([SCALE, P.stroke / 2, OW, OH, P.fg[0] / 255, P.fg[1] / 255, P.fg[2] / 255, 1, 0, 3, 0, 0]);
+  const l4 = sim.view === 'l4';
+  const dv = new Float32Array([SCALE, l4 ? P.l4b / 4 : P.stroke / 2, OW, OH, P.fg[0] / 255, P.fg[1] / 255, P.fg[2] / 255, 1, 0, 3, P.l4a / 2, P.l4b / 2]);
   device.queue.writeBuffer(B.du, 0, dv);
   const d = {
     colorAttachments: [{ view: msaaView, resolveTarget: ctx.getCurrentTexture().createView(),
@@ -1402,7 +1440,8 @@ function encodeDraw(enc) {
   };
   if (hasTS && timing && qn + 2 <= CAP) { d.timestampWrites = { querySet: qs, beginningOfPassWriteIndex: qn, endOfPassWriteIndex: qn + 1 }; qlabels.push(['draw: render', qn]); qn += 2; }
   const p = enc.beginRenderPass(d);
-  p.setPipeline(drawPipe); p.setBindGroup(0, drawBG); p.drawIndirect(B.args, 32); p.end();
+  if (l4) { p.setPipeline(pipeL4); p.setBindGroup(0, drawL4BG); } else { p.setPipeline(drawPipe); p.setBindGroup(0, drawBG); }
+  p.drawIndirect(B.args, 32); p.end();
 }
 
 
@@ -1615,6 +1654,7 @@ async function start() {
 const versions = [
   { id: 'src', label: 'Source video' },
   { id: 'gpu', label: 'V1 Line' },
+  { id: 'l4', label: 'Line v04' },
   { id: 'v2', label: 'V2 Line' },
   { id: 'v3', label: 'V3 100$' },
   { id: 'v4', label: 'V4 Iso Cubes' },
@@ -1646,7 +1686,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4y: 'v4y', v5s: 'v5s', v5f: 'v5f', v5k: 'v5k', v5th: 'v5th', v5lv: 'v5lv', v5b: 'v5b', v5bl: 'v5bl', v5sp: 'v5sp', v5t: 'v5t', v5g: 'v5g', v5r: 'v5r', v5c: 'v5c', v5m: 'v5m', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { l4min: 'l4min', l4max: 'l4max', l4a: 'l4a', l4b: 'l4b', rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4y: 'v4y', v5s: 'v5s', v5f: 'v5f', v5k: 'v5k', v5th: 'v5th', v5lv: 'v5lv', v5b: 'v5b', v5bl: 'v5bl', v5sp: 'v5sp', v5t: 'v5t', v5g: 'v5g', v5r: 'v5r', v5c: 'v5c', v5m: 'v5m', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1775,7 +1815,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5lv', 'v5b', 'v5bl', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['l4min', 'l4max', 'l4a', 'l4b', 'stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5lv', 'v5b', 'v5bl', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261024204036">
+<meta name="build" content="20261025230434">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.29 (2026-10-24 20:40)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.30 (2026-10-25 23:04)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -63,13 +63,17 @@
     </div>
     <div id="settings">
       <h2 id="setHead">Settings</h2>
-            <div class="ctl" data-views="gpu,v2"><span>Line / paper</span><span><input type="color" id="fg" value="#d23219"> <input type="color" id="bg" value="#f2f0ee"></span><span></span></div>
+            <div class="ctl" data-views="gpu,v2,l4"><span>Line / paper</span><span><input type="color" id="fg" value="#d23219"> <input type="color" id="bg" value="#f2f0ee"></span><span></span></div>
       <div class="ctl" data-views="gpu"><span>Stroke px</span><input type="range" id="stroke" min="1" max="6" step="0.25" value="4.75"><output></output></div>
+      <div class="ctl" data-views="l4"><span>Thin line px (light)</span><input type="range" id="l4a" min="0.5" max="8" step="0.25" value="1.5"><output></output></div>
+      <div class="ctl" data-views="l4"><span>Thick line px (dark)</span><input type="range" id="l4b" min="2" max="16" step="0.25" value="7"><output></output></div>
+      <div class="ctl" data-views="l4"><span>Rmin (dark spacing)</span><input type="range" id="l4min" min="2.5" max="8" step="0.05" value="4.2"><output></output></div>
+      <div class="ctl" data-views="l4"><span>Rmax (light spacing)</span><input type="range" id="l4max" min="8" max="30" step="0.25" value="13.75"><output></output></div>
       <div class="ctl" data-views="gpu,bit8"><span>Rmin</span><input type="range" id="rmin" min="2.5" max="6" step="0.05" value="3.05"><output></output></div>
       <div class="ctl" data-views="gpu,bit8"><span>Rmax</span><input type="range" id="rmax" min="10" max="30" step="0.25" value="13.75"><output></output></div>
-      <div class="ctl" data-views="gpu,bit8"><span>Gain</span><input type="range" id="gain" min="1" max="2.5" step="0.05" value="1.75"><output></output></div>
-      <div class="ctl" data-views="gpu,bit8"><span>Noise</span><input type="range" id="noise" min="0" max="0.4" step="0.01" value="0.22"><output></output></div>
-      <div class="ctl" data-views="gpu,bit8"><span>Steps/frame</span><input type="range" id="iters" min="1" max="12" step="1" value="6"><output></output></div>
+      <div class="ctl" data-views="gpu,bit8,l4"><span>Gain</span><input type="range" id="gain" min="1" max="2.5" step="0.05" value="1.75"><output></output></div>
+      <div class="ctl" data-views="gpu,bit8,l4"><span>Noise</span><input type="range" id="noise" min="0" max="0.4" step="0.01" value="0.22"><output></output></div>
+      <div class="ctl" data-views="gpu,bit8,l4"><span>Steps/frame</span><input type="range" id="iters" min="1" max="12" step="1" value="6"><output></output></div>
       <div class="ctl" data-views="bit8"><span>Pixel size</span><input type="range" id="px" min="3" max="12" step="1" value="6"><output></output></div>
       <div class="ctl" data-views="v2"><span>Spacing</span><input type="range" id="v2s" min="8" max="40" step="1" value="16"><output></output></div>
       <div class="ctl" data-views="v2"><span>Relief</span><input type="range" id="v2r" min="0" max="160" step="2" value="70"><output></output></div>
@@ -132,7 +136,7 @@
     </div>
     <div>
       <h2>Input</h2>
-      <div class="ctl" data-views="gpu,bit8"><span>Subject</span><select id="subject"><option value="0">Off</option><option value="1" selected>Subject only</option><option value="2">Background only</option></select><span></span></div>
+      <div class="ctl" data-views="gpu,bit8,l4"><span>Subject</span><select id="subject"><option value="0">Off</option><option value="1" selected>Subject only</option><option value="2">Background only</option></select><span></span></div>
       <div class="ctl" data-views="v2,v3,v4"><span>Subject model</span><select id="smodel"><option value="mp" selected>MediaPipe selfie (fast)</option><option value="rvm">Robust Video Matting (steady)</option></select><span></span></div>
       <label class="note"><input type="checkbox" id="mirror" checked> mirror camera</label><br>
       <label class="note"><input type="checkbox" id="key"> key out red (red background only)</label>
@@ -151,6 +155,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261024204036"></script>
+<script type="module" src="gpu_line.js?b=20261025230434"></script>
 </body>
 </html>
