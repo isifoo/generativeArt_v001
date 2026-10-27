@@ -152,7 +152,7 @@ const DISPLAY = [
     '  vec3 srcOff = uSourceOffset + vec3(0.0, 0.0, phase);',
     '  vec3 angOff = uAngleOffset  + vec3(0.0, 0.0, phase);',
     '  vec3 amtOff = uAmountOffset + vec3(0.0, 0.0, phase);',
-    '  vec2 p = auv * mix(uScaleBg, uScale, smoothstep(0.0, 1.0, intensity));',
+    '  vec2 p = auv * mix(uScaleBg, uScale, smoothstep(0.2, 0.8, intensity));',
     '  for (int i = 0; i < 4; i++) {',
     '    if (i >= uWarpIterations) break;',
     '    p = polarWarp(p, angOff, amtOff, warpAmountLocal, freqMult);',
@@ -166,7 +166,7 @@ const DISPLAY = [
     '  float s = component(v, a, e, uSatSrc, uSatAng, uSatAmt) * uSaturation;',
     '  float b = component(v, a, e, uBriSrc, uBriAng, uBriAmt);',
     '  b = pow(b, uPower) * uBrightness;',
-    '  float lift = 1.0 - smoothstep(0.0, 0.9, intensity);',
+    '  float lift = 1.0 - smoothstep(0.2, 0.8, intensity);',
     '  vec3 color = hsv2rgb(vec3(h, s, min(b * (1.0 + lift * (uBgBright - 1.0)), 1.6)));',
     '  color = mix(color, vec3(1.0), lift * uBgWhite);',
     '  gl_FragColor = vec4(color, 1.0);',
@@ -222,7 +222,7 @@ export function frame(vid, P, mk) {
       st.f[j * MW + i] = Math.min(1, Math.max(0, (m - 0.2) / 0.6));
     }
     // wide soft edge: three box blur passes, so the object fades into the background instead of ending at a contour
-    const R = Math.round(P.v6bl ?? 6), f = st.f, t = st.f2;
+    const R = Math.round(P.v6bl ?? 2), f = st.f, t = st.f2;
     if (R > 0) for (let pass = 0; pass < 3; pass++) {
       for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { let a = 0, n = 0; for (let q = -R; q <= R; q++) { const ii = i + q; if (ii >= 0 && ii < MW) { a += f[j * MW + ii]; n++; } } t[j * MW + i] = a / n; }
       for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { let a = 0, n = 0; for (let q = -R; q <= R; q++) { const jj = j + q; if (jj >= 0 && jj < MH) { a += t[jj * MW + i]; n++; } } f[j * MW + i] = a / n; }
@@ -232,7 +232,7 @@ export function frame(vid, P, mk) {
   x.putImageData(im, 0, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, mc);
-  const sp = P.v6sp ?? 1, df = P.v6df ?? 0.4;   // df scales every difference between object and background: 0 = identical, 1 = full
+  const sp = P.v6sp ?? 1, df = P.v6df ?? 0.6;   // df scales every difference between object and background: 0 = identical, 1 = full
   const mixD = (v) => 1 + (v - 1) * df;
   for (const f of st.off) f[2] += DEF.animSpeed * sp * dt * 6;
   // update pass: decay + bleed + the mask as the "mouse"
@@ -241,7 +241,7 @@ export function frame(vid, P, mk) {
   gl.useProgram(st.upd); bindQuad(st.upd);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, st.fb[st.rd].t); gl.uniform1i(u.uPrev, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.uniform1i(u.uMask, 1);
-  gl.uniform2f(u.uResolution, st.IW, st.IH); gl.uniform1f(u.uDecay, P.v6d ?? 0.95); gl.uniform1f(u.uBleed, DEF.bleed);
+  gl.uniform2f(u.uResolution, st.IW, st.IH); gl.uniform1f(u.uDecay, P.v6d ?? 0.9); gl.uniform1f(u.uBleed, DEF.bleed);
   gl.uniform1f(u.uPhaseRate, (P.v6ph ?? 1.5) * df); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uStrength, P.v6s ?? 1);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   st.rd = w;
