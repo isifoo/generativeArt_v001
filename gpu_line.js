@@ -1821,7 +1821,7 @@ const STORE = 'lineGpuDefaults.v1';
 const SAVE_IDS = ['v6f', 'v6w', 'v6d', 'v6ph', 'v6b', 'v6wh', 'v6sc', 'v6sb', 'v6bl', 'v6df', 'v6sp', 'l4min', 'l4max', 'l4a', 'l4b', 'stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5lv', 'v5b', 'v5bl', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
-  const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v: {}, c: {}, l: {} };
+  const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v6rev: 3, v: {}, c: {}, l: {} };
   for (const id of Object.keys(sliders)) o.l[id] = [$('#' + id).min, $('#' + id).max];
   SAVE_IDS.forEach((id) => { o.v[id] = $('#' + id).value; });
   SAVE_CB.forEach((id) => { o.c[id] = $('#' + id).checked; });
@@ -1843,6 +1843,7 @@ function applySettings(o) {
 }
 let saved = null;
 try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch {}
+if (saved && saved.v && saved.v6rev !== 3) { for (const k of Object.keys(saved.v)) if (k.startsWith('v6')) delete saved.v[k]; }   // V6 defaults changed: drop old saved V6 sliders
 if (saved) applySettings(saved);
 $('#setdef').onclick = () => {
   try { localStorage.setItem(STORE, JSON.stringify(snapshotSettings())); $('#setdef').textContent = 'Saved as default'; }

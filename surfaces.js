@@ -1,7 +1,8 @@
 // V6 Liquid Surfaces: palmdrop "Surfaces" noise (liquid-fx2-surfaces.json). The subject mask plays the mouse: it boosts the pattern's own
 // frequency / warp / time where the subject is and leaves a decaying trail when it moves. The background is the same pattern, brighter.
 let gl = null, st = null;
-const DEF = {"scale": 1.78, "warpAmount": 0.935, "warpIterations": 4, "animSpeed": 0.011, "srcFrequency": 0.3291, "srcLacunarity": 5.740366659674152, "srcPersistence": 0.514, "srcRidge": 0.9915719678769965, "srcPow": 2.240971917382968, "srcOctaves": 3, "angFrequency": 0.3993420240238754, "angLacunarity": 2.9519116325958965, "angPersistence": 0.012859637563908644, "angRidge": 0.9969207974367497, "angPow": 2.0034261488639253, "angOctaves": 3, "amtFrequency": 0.5981440617034829, "amtLacunarity": 2.5704336074177316, "amtPersistence": 0.07686896917051708, "amtRidge": 0.828, "amtPow": 1.0510829716259347, "amtOctaves": 5, "hue": -0.24, "saturation": 0.838632309403537, "brightness": 1.539, "power": 1, "hueSrc": -0.19973268980328918, "hueAng": 0.11885348084160197, "hueAmt": -0.42670525006517657, "satSrc": 0.21365060616739806, "satAng": 0.07407397671756077, "satAmt": 0.8013619448583572, "briSrc": 1, "briAng": 0, "briAmt": 0, "brushRadius": 0.11, "decay": 0.9745, "bleed": 0.5, "phaseRate": 0, "extraFreqMult": 1.22, "extraWarpMult": 1.92, "brushStrength": 0.82};
+const DEF = {scale: 1.78, warpAmount: 0.935, warpIterations: 4, animSpeed: 0.011, srcFrequency: 0.3291, srcLacunarity: 5.740366659674152, srcPersistence: 0.514, srcRidge: 0.9915719678769965, srcPow: 2.240971917382968, srcOctaves: 3, angFrequency: 0.3993420240238754, angLacunarity: 2.9519116325958965, angPersistence: 0.012859637563908644, angRidge: 0.9969207974367497, angPow: 2.0034261488639253, angOctaves: 3, amtFrequency: 0.5981440617034829, amtLacunarity: 2.5704336074177316, amtPersistence: 0.07686896917051708, amtRidge: 0.828, amtPow: 1.0510829716259347, amtOctaves: 5, hue: -0.24, saturation: 0.621209118076694, brightness: 1.14, power: 1, hueSrc: -0.19973268980328918, hueAng: 0.11885348084160197, hueAmt: -0.42670525006517657, satSrc: 0.21365060616739806, satAng: 0.07407397671756077, satAmt: 0.8013619448583572, briSrc: 1, briAng: 0, briAmt: 0, brushRadius: 0.11, decay: 0.9745, bleed: 0.5, phaseRate: 0, extraFreqMult: 1.22, extraWarpMult: 1.92, brushStrength: 0.82};   // the runtime defaults the portfolio page runs on
+Object.assign(DEF, { saturation: 0.838632309403537, brightness: 1.539 });   // the purple look from the JSON's settings export
 const VERT = 'attribute vec2 aPos;\nvoid main() {\n  gl_Position = vec4(aPos, 0.0, 1.0);\n}';
 const UPDATE = [
   'precision highp float;',
@@ -222,7 +223,7 @@ export function frame(vid, P, mk) {
       st.f[j * MW + i] = Math.min(1, Math.max(0, (m - 0.2) / 0.6));
     }
     // wide soft edge: three box blur passes, so the object fades into the background instead of ending at a contour
-    const R = Math.round(P.v6bl ?? 2), f = st.f, t = st.f2;
+    const R = Math.round(P.v6bl ?? 3), f = st.f, t = st.f2;
     if (R > 0) for (let pass = 0; pass < 3; pass++) {
       for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { let a = 0, n = 0; for (let q = -R; q <= R; q++) { const ii = i + q; if (ii >= 0 && ii < MW) { a += f[j * MW + ii]; n++; } } t[j * MW + i] = a / n; }
       for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { let a = 0, n = 0; for (let q = -R; q <= R; q++) { const jj = j + q; if (jj >= 0 && jj < MH) { a += t[jj * MW + i]; n++; } } f[j * MW + i] = a / n; }
@@ -232,7 +233,7 @@ export function frame(vid, P, mk) {
   x.putImageData(im, 0, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, mc);
-  const sp = P.v6sp ?? 1, df = P.v6df ?? 0.6;   // df scales every difference between object and background: 0 = identical, 1 = full
+  const sp = P.v6sp ?? 1, df = P.v6df ?? 1;   // df scales every difference between object and background: 0 = identical, 1 = full
   const mixD = (v) => 1 + (v - 1) * df;
   for (const f of st.off) f[2] += DEF.animSpeed * sp * dt * 6;
   // update pass: decay + bleed + the mask as the "mouse"
@@ -241,8 +242,8 @@ export function frame(vid, P, mk) {
   gl.useProgram(st.upd); bindQuad(st.upd);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, st.fb[st.rd].t); gl.uniform1i(u.uPrev, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.uniform1i(u.uMask, 1);
-  gl.uniform2f(u.uResolution, st.IW, st.IH); gl.uniform1f(u.uDecay, P.v6d ?? 0.9); gl.uniform1f(u.uBleed, DEF.bleed);
-  gl.uniform1f(u.uPhaseRate, (P.v6ph ?? 1.5) * df); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uStrength, P.v6s ?? 1);
+  gl.uniform2f(u.uResolution, st.IW, st.IH); gl.uniform1f(u.uDecay, P.v6d ?? 0.9745); gl.uniform1f(u.uBleed, DEF.bleed);
+  gl.uniform1f(u.uPhaseRate, (P.v6ph ?? 0) * df); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uStrength, P.v6s ?? 0.82);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   st.rd = w;
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, st.cv.width, st.cv.height);
@@ -261,7 +262,7 @@ export function frame(vid, P, mk) {
   gl.uniform1f(d.uHueSrc, DEF.hueSrc); gl.uniform1f(d.uHueAng, DEF.hueAng); gl.uniform1f(d.uHueAmt, DEF.hueAmt);
   gl.uniform1f(d.uSatSrc, DEF.satSrc); gl.uniform1f(d.uSatAng, DEF.satAng); gl.uniform1f(d.uSatAmt, DEF.satAmt);
   gl.uniform1f(d.uBriSrc, DEF.briSrc); gl.uniform1f(d.uBriAng, DEF.briAng); gl.uniform1f(d.uBriAmt, DEF.briAmt);
-  gl.uniform1f(d.uExtraFreqMult, mixD(P.v6f ?? 1.8)); gl.uniform1f(d.uExtraWarpMult, mixD(P.v6w ?? 1.4));
-  gl.uniform1f(d.uScaleBg, P.v6sb ?? DEF.scale); gl.uniform1f(d.uBlur, 0.003); gl.uniform1f(d.uBgBright, mixD(P.v6b ?? 1.25)); gl.uniform1f(d.uBgWhite, (P.v6wh ?? 0.12) * df);
+  gl.uniform1f(d.uExtraFreqMult, mixD(P.v6f ?? 2.5)); gl.uniform1f(d.uExtraWarpMult, mixD(P.v6w ?? 2.5));
+  gl.uniform1f(d.uScaleBg, P.v6sb ?? DEF.scale); gl.uniform1f(d.uBlur, 0.003); gl.uniform1f(d.uBgBright, mixD(P.v6b ?? 1)); gl.uniform1f(d.uBgWhite, (P.v6wh ?? 0) * df);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
