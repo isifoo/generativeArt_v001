@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261027002703">
+<meta name="build" content="20261027090406">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.38 (2026-10-27 00:27)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.39 (2026-10-27 09:04)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -111,6 +111,9 @@
       <div class="ctl" data-views="v6"><span>Subject is</span><select id="v6pol"><option value="0" selected>Darker than background</option><option value="1">Lighter than background</option></select><span></span></div>
       <div class="ctl" data-views="v6"><span>Threshold shift</span><input type="range" id="v6th" min="-0.3" max="0.3" step="0.01" value="0"><output></output></div>
       <div class="ctl" data-views="v6"><span>Edge softness</span><input type="range" id="v6so" min="0.005" max="0.3" step="0.005" value="0.01"><output></output></div>
+      <div class="ctl" data-views="v6"><span>Mask smoothing in time (anti flicker)</span><input type="range" id="v6mt" min="0" max="0.98" step="0.01" value="0.8"><output></output></div>
+      <div class="ctl" data-views="v6"><span>Mask blur (fast blur)</span><input type="range" id="v6mb" min="0" max="20" step="1" value="6"><output></output></div>
+      <div class="ctl" data-views="v6"><span>Mask levels width (small = more contrast)</span><input type="range" id="v6lw" min="0.02" max="0.5" step="0.01" value="0.2"><output></output></div>
       <div class="ctl" data-views="v6"><span>Object vs background difference</span><input type="range" id="v6df" min="0" max="1" step="0.01" value="1"><output></output></div>
       <div class="ctl" data-views="v6"><span>Object detail boost</span><input type="range" id="v6f" min="1" max="8" step="0.1" value="2.5"><output></output></div>
       <div class="ctl" data-views="v6"><span>Object warp boost</span><input type="range" id="v6w" min="1" max="4" step="0.05" value="2.5"><output></output></div>
@@ -170,6 +173,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261027002703"></script>
+<script type="module" src="gpu_line.js?b=20261027090406"></script>
 </body>
 </html>
