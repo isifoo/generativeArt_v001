@@ -242,7 +242,7 @@ export function frame(vid, P, mk) {
   gl.useProgram(st.upd); bindQuad(st.upd);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, st.fb[st.rd].t); gl.uniform1i(u.uPrev, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.uniform1i(u.uMask, 1);
-  gl.uniform2f(u.uResolution, st.IW, st.IH); gl.uniform1f(u.uDecay, P.v6d ?? 0.9745); gl.uniform1f(u.uBleed, DEF.bleed);
+  gl.uniform2f(u.uResolution, st.IW, st.IH); gl.uniform1f(u.uDecay, P.v6d ?? 0.99); gl.uniform1f(u.uBleed, DEF.bleed);
   gl.uniform1f(u.uPhaseRate, (P.v6ph ?? 0) * df); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uStrength, P.v6s ?? 0.82);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   st.rd = w;

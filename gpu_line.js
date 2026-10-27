@@ -1387,6 +1387,37 @@ function v5Seg() {                                      // subject mask for V5, 
     m.close(); r.close && r.close();
   } catch (e) { msg('V5 separator failed: ' + e.message); P.v5b = 0; }
 }
+let v6th = 0.5;
+function v6Mask() {                                      // subject mask for V6: 0 value (brightness) separation, 1 matting model, 2 selfie segmenter. Always in video space.
+  if (vid.readyState < 2 || !vid.videoWidth) return v5mask;
+  const mode = parseInt($('#v6sep').value);
+  if (mode === 2) { v5Seg(); return v5mask; }
+  if (mode === 1) {
+    if (!rvm.ready) { loadRvm(); return v5mask; }
+    if (rvm.busy) return v5mask;
+    rvm.busy = true;
+    const { ort } = rvm, { w, h } = modelFrame(384, 32);
+    if (rvm.dims !== w + 'x' + h) { rvm.dims = w + 'x' + h; rvm.st = [rvm.zero(), rvm.zero(), rvm.zero(), rvm.zero()]; }
+    const d = mctx.getImageData(0, 0, w, h).data, n = w * h, f = new Float32Array(3 * n);
+    for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+    rvm.sess.run({ src: new ort.Tensor('float32', f, [1, 3, h, w]), r1i: rvm.st[0], r2i: rvm.st[1], r3i: rvm.st[2], r4i: rvm.st[3], downsample_ratio: rvm.ratio })
+      .then(async (o) => { rvm.st = [o.r1o, o.r2o, o.r3o, o.r4o]; const p = o.pha.data ?? await o.pha.getData(); v5mask = { d: new Float32Array(p), w, h }; })
+      .catch((e) => { msg('Matting run failed: ' + e.message); $('#v6sep').value = '0'; })
+      .finally(() => { rvm.busy = false; });
+    return v5mask;
+  }
+  // value separation: Otsu threshold on the brightness, the subject is the darker (or lighter) side; no model involved
+  const { w, h } = modelFrame(96, 8), px = mctx.getImageData(0, 0, w, h).data, n = w * h, L = new Float32Array(n), hist = new Float32Array(64);
+  for (let i = 0; i < n; i++) { L[i] = (0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2]) / 255; hist[Math.min(63, (L[i] * 64) | 0)]++; }
+  let sumAll = 0; for (let b = 0; b < 64; b++) sumAll += b * hist[b];
+  let wB = 0, sB = 0, best = -1, bt = 32;
+  for (let b = 0; b < 64; b++) { wB += hist[b]; if (!wB) continue; const wF = n - wB; if (!wF) break; sB += b * hist[b]; const mB = sB / wB, mF = (sumAll - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF); if (v > best) { best = v; bt = b; } }
+  v6th += ((bt + 1) / 64 - v6th) * 0.15;
+  const th = Math.min(0.95, Math.max(0.05, v6th + P.v6th)), so = Math.max(0.01, P.v6so), dark = $('#v6pol').value === '0', m = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const t = Math.min(1, Math.max(0, (L[i] - (th - so)) / (2 * so))), s = t * t * (3 - 2 * t); m[i] = dark ? 1 - s : s; }
+  v5mask = { d: m, w, h };
+  return v5mask;
+}
 function segment() {
   if (sim.view === 'v3') return;                         // V3 captures stills, see stillCycle
   if (P.smodel === 'rvm' && (sim.view === 'v2' || sim.view === 'v3' || sim.view === 'v4')) { rvmKick(); return; }
@@ -1606,7 +1637,7 @@ let lastMedia = -1;
 function loop() {
   requestAnimationFrame(loop);
   if (sim.view === 'v3') { stillTick(); return; }
-  if (sim.view === 'v6') { if (surf) { v5Seg(); surf.frame(vid, P, v5mask); } return; }
+  if (sim.view === 'v6') { if (surf) { surf.frame(vid, P, v6Mask()); } return; }
   if (sim.view === 'v5') { if (cubes3d) { v5Seg(); cubes3d.frame(vid, P, P.v5b > 0 ? v5mask : null); } return; }
   if (vid.readyState < 2) return;
   const t = vid.currentTime;
@@ -1677,6 +1708,7 @@ function setView(id) {
   if (id !== 'src') sim.boost = 8;
   if (id === 'v2' || id === 'v3' || id === 'v4' || id === 'v5' || id === 'v6') loadSegmenter();
   if (id === 'v4' && P.smodel === 'rvm') loadRvm();
+  if (id === 'v6' && $('#v6sep').value === '1') loadRvm();
   if (id === 'v3') { still.last = 0; if (P.smodel === 'rvm') loadRvm(); }
   document.querySelectorAll('#versions button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
   const vl = versions.find((v) => v.id === id);
@@ -1689,7 +1721,7 @@ for (const v of versions) {
   b.onclick = () => { if ((v.id === 'v3') !== LAND && v.id !== 'src') location.search = v.id === 'v3' ? '?land=1&view=v3' : '?view=' + v.id; else setView(v.id); };
   $('#versions').append(b);
 }
-const sliders = { v6f: 'v6f', v6w: 'v6w', v6d: 'v6d', v6ph: 'v6ph', v6b: 'v6b', v6wh: 'v6wh', v6sc: 'v6sc', v6sb: 'v6sb', v6df: 'v6df', v6bl: 'v6bl', v6sp: 'v6sp', l4min: 'l4min', l4max: 'l4max', l4a: 'l4a', l4b: 'l4b', rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4y: 'v4y', v5s: 'v5s', v5f: 'v5f', v5k: 'v5k', v5th: 'v5th', v5lv: 'v5lv', v5b: 'v5b', v5bl: 'v5bl', v5sp: 'v5sp', v5t: 'v5t', v5g: 'v5g', v5r: 'v5r', v5c: 'v5c', v5m: 'v5m', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
+const sliders = { v6f: 'v6f', v6w: 'v6w', v6d: 'v6d', v6ph: 'v6ph', v6b: 'v6b', v6wh: 'v6wh', v6sc: 'v6sc', v6sb: 'v6sb', v6th: 'v6th', v6so: 'v6so', v6df: 'v6df', v6bl: 'v6bl', v6sp: 'v6sp', l4min: 'l4min', l4max: 'l4max', l4a: 'l4a', l4b: 'l4b', rmin: 'rmin', rmax: 'rmax', gain: 'gain', noise: 'noise', iters: 'iters', stroke: 'stroke', px: 'px', v2s: 'v2s', v2r: 'v2r', v2a: 'v2a', v2b: 'v2b', v2o: 'v2o', v2g: 'v2g', v3s: 'v3s', v3r: 'v3r', v3a: 'v3a', v3b: 'v3b', v3d: 'v3d', v3z: 'v3z', v3w: 'v3w', v3m: 'v3m', v3int: 'v3int', v4s: 'v4s', v4n: 'v4n', v4l: 'v4l', v4d: 'v4d', v4f: 'v4f', v4w: 'v4w', v4b: 'v4b', v4a: 'v4a', v4k: 'v4k', v4m: 'v4m', v4r: 'v4r', v4q: 'v4q', v4j: 'v4j', v4z: 'v4z', v4y: 'v4y', v5s: 'v5s', v5f: 'v5f', v5k: 'v5k', v5th: 'v5th', v5lv: 'v5lv', v5b: 'v5b', v5bl: 'v5bl', v5sp: 'v5sp', v5t: 'v5t', v5g: 'v5g', v5r: 'v5r', v5c: 'v5c', v5m: 'v5m', v4c: 'v4c', v3p: 'v3p', v3res: 'v3res', v3x: 'v3x', v3y: 'v3y', v3k: 'v3k' };
 for (const [id, key] of Object.entries(sliders)) {
   const el = $('#' + id), out = el.parentElement.querySelector('output');
   const upd = () => { P[key] = parseFloat(el.value); out.textContent = el.value; sim.boost = Math.max(sim.boost, 4); };
@@ -1716,6 +1748,7 @@ $('#mirror').onchange = (e) => { P.mirror = e.target.checked; if (camStream) vid
 $('#subject').onchange = async (e) => { P.subject = parseInt(e.target.value); if (P.subject) await loadSegmenter(); sim.boost = 8; };
 $('#key').onchange = (e) => { P.key = e.target.checked; sim.boost = 6; };
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+$('#v6sep').onchange = async (e) => { if (e.target.value === '1') await loadRvm(); if (e.target.value === '2') await loadSegmenter(); v5mask = null; };
 $('#smodel').onchange = async (e) => { P.smodel = e.target.value; if (P.smodel === 'rvm') await loadRvm(); };
 $('#v3auto').onchange = (e) => { P.v3auto = e.target.checked; };
 $('#v4i').oninput = (e) => { P.v4i = hex(e.target.value); };
@@ -1818,7 +1851,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['v6f', 'v6w', 'v6d', 'v6ph', 'v6b', 'v6wh', 'v6sc', 'v6sb', 'v6bl', 'v6df', 'v6sp', 'l4min', 'l4max', 'l4a', 'l4b', 'stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5lv', 'v5b', 'v5bl', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['v6f', 'v6w', 'v6d', 'v6ph', 'v6b', 'v6wh', 'v6sc', 'v6sb', 'v6th', 'v6so', 'v6sep', 'v6pol', 'v6bl', 'v6df', 'v6sp', 'l4min', 'l4max', 'l4a', 'l4b', 'stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5lv', 'v5b', 'v5bl', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v6rev: 3, v: {}, c: {}, l: {} };
