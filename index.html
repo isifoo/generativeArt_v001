@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261026230249">
+<meta name="build" content="20261026232719">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.31 (2026-10-26 23:02)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.32 (2026-10-26 23:27)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -113,7 +113,9 @@
       <div class="ctl" data-views="v6"><span>Object time speed</span><input type="range" id="v6ph" min="0" max="4" step="0.1" value="1.5"><output></output></div>
       <div class="ctl" data-views="v6"><span>Background brighter</span><input type="range" id="v6b" min="1" max="2.5" step="0.05" value="1.5"><output></output></div>
       <div class="ctl" data-views="v6"><span>Background to white</span><input type="range" id="v6wh" min="0" max="0.8" step="0.01" value="0.25"><output></output></div>
-      <div class="ctl" data-views="v6"><span>Pattern scale</span><input type="range" id="v6sc" min="0.5" max="5" step="0.05" value="1.78"><output></output></div>
+      <div class="ctl" data-views="v6"><span>Object scale</span><input type="range" id="v6sc" min="0.5" max="5" step="0.05" value="1.78"><output></output></div>
+      <div class="ctl" data-views="v6"><span>Background scale</span><input type="range" id="v6sb" min="0.5" max="5" step="0.05" value="1.78"><output></output></div>
+      <div class="ctl" data-views="v6"><span>Blend object / background</span><input type="range" id="v6bl" min="0" max="0.15" step="0.005" value="0.05"><output></output></div>
       <div class="ctl" data-views="v6"><span>Pattern speed</span><input type="range" id="v6sp" min="0" max="4" step="0.1" value="1"><output></output></div>
       <div class="ctl" data-views="v5"><span>Perspective (fov)</span><input type="range" id="v5f" min="8" max="80" step="1" value="40"><output></output></div>
       <div class="ctl" data-views="v5"><span>Camera tilt (deg)</span><input type="range" id="v5t" min="0" max="45" step="1" value="12"><output></output></div>
@@ -163,6 +165,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261026230249"></script>
+<script type="module" src="gpu_line.js?b=20261026232719"></script>
 </body>
 </html>

@@ -47,7 +47,7 @@ const DISPLAY = [
     'uniform float uBriSrc, uBriAng, uBriAmt;',
     'uniform float uExtraFreqMult;',
     'uniform float uExtraWarpMult;',
-    'uniform float uBgBright, uBgWhite;',
+    'uniform float uBgBright, uBgWhite, uScaleBg, uBlur;',
     '#define PI 3.14159265358979323846',
     '#define PHASE_MAX 6.0',
     'vec3 mod289(vec3 x){ return x - floor(x * (1.0/289.0)) * 289.0; }',
@@ -143,14 +143,16 @@ const DISPLAY = [
     '  vec2 uv = gl_FragCoord.xy / uResolution.xy;',
     '  vec2 auv = vec2(uv.x * aspect, uv.y);',
     '  vec2 influence = texture2D(uInfluence, uv).rg;',
-    '  float intensity = influence.r;',
+    '  float intensity = 0.0;',
+    '  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) intensity += texture2D(uInfluence, uv + vec2(float(i), float(j)) * uBlur * vec2(1.0 / aspect, 1.0)).r;',
+    '  intensity /= 9.0;',
     '  float phase = influence.g * PHASE_MAX;',
     '  float freqMult = mix(1.0, uExtraFreqMult, intensity);',
     '  float warpAmountLocal = uWarpAmount * mix(1.0, uExtraWarpMult, intensity);',
     '  vec3 srcOff = uSourceOffset + vec3(0.0, 0.0, phase);',
     '  vec3 angOff = uAngleOffset  + vec3(0.0, 0.0, phase);',
     '  vec3 amtOff = uAmountOffset + vec3(0.0, 0.0, phase);',
-    '  vec2 p = auv * uScale;',
+    '  vec2 p = auv * mix(uScaleBg, uScale, smoothstep(0.0, 1.0, intensity));',
     '  for (int i = 0; i < 4; i++) {',
     '    if (i >= uWarpIterations) break;',
     '    p = polarWarp(p, angOff, amtOff, warpAmountLocal, freqMult);',
@@ -164,7 +166,7 @@ const DISPLAY = [
     '  float s = component(v, a, e, uSatSrc, uSatAng, uSatAmt) * uSaturation;',
     '  float b = component(v, a, e, uBriSrc, uBriAng, uBriAmt);',
     '  b = pow(b, uPower) * uBrightness;',
-    '  float lift = 1.0 - smoothstep(0.0, 0.6, intensity);',
+    '  float lift = 1.0 - smoothstep(0.0, 0.9, intensity);',
     '  vec3 color = hsv2rgb(vec3(h, s, min(b * (1.0 + lift * (uBgBright - 1.0)), 1.6)));',
     '  color = mix(color, vec3(1.0), lift * uBgWhite);',
     '  gl_FragColor = vec4(color, 1.0);',
@@ -200,7 +202,7 @@ export function show(on, stage, vid, P) {
     st = { cv, upd, dis, quad, fb, IW, IH, mt, MW, MH, mc: document.createElement('canvas'), rd: 0, off: [[rnd(), rnd(), 0], [rnd(), rnd(), 0], [rnd(), rnd(), 0]], u: {}, d: {}, t: 0 };
     st.mc.width = MW; st.mc.height = MH;
     for (const n of ['uPrev', 'uMask', 'uResolution', 'uDecay', 'uBleed', 'uPhaseRate', 'uDt', 'uStrength']) st.u[n] = gl.getUniformLocation(upd, n);
-    for (const n of ['uInfluence', 'uResolution', 'uSourceOffset', 'uAngleOffset', 'uAmountOffset', 'uScale', 'uWarpAmount', 'uWarpIterations', 'uSrcFreq', 'uSrcLac', 'uSrcPers', 'uSrcRidge', 'uSrcPow', 'uAngFreq', 'uAngLac', 'uAngPers', 'uAngRidge', 'uAngPow', 'uAmtFreq', 'uAmtLac', 'uAmtPers', 'uAmtRidge', 'uAmtPow', 'uSrcOctaves', 'uAngOctaves', 'uAmtOctaves', 'uHue', 'uSaturation', 'uBrightness', 'uPower', 'uHueSrc', 'uHueAng', 'uHueAmt', 'uSatSrc', 'uSatAng', 'uSatAmt', 'uBriSrc', 'uBriAng', 'uBriAmt', 'uExtraFreqMult', 'uExtraWarpMult', 'uBgBright', 'uBgWhite']) st.d[n] = gl.getUniformLocation(dis, n);
+    for (const n of ['uInfluence', 'uResolution', 'uSourceOffset', 'uAngleOffset', 'uAmountOffset', 'uScale', 'uWarpAmount', 'uWarpIterations', 'uSrcFreq', 'uSrcLac', 'uSrcPers', 'uSrcRidge', 'uSrcPow', 'uAngFreq', 'uAngLac', 'uAngPers', 'uAngRidge', 'uAngPow', 'uAmtFreq', 'uAmtLac', 'uAmtPers', 'uAmtRidge', 'uAmtPow', 'uSrcOctaves', 'uAngOctaves', 'uAmtOctaves', 'uHue', 'uSaturation', 'uBrightness', 'uPower', 'uHueSrc', 'uHueAng', 'uHueAmt', 'uSatSrc', 'uSatAng', 'uSatAmt', 'uBriSrc', 'uBriAng', 'uBriAmt', 'uExtraFreqMult', 'uExtraWarpMult', 'uBgBright', 'uBgWhite', 'uScaleBg', 'uBlur']) st.d[n] = gl.getUniformLocation(dis, n);
   }
   st.cv.style.visibility = on ? 'visible' : 'hidden';
 }
@@ -253,6 +255,6 @@ export function frame(vid, P, mk) {
   gl.uniform1f(d.uSatSrc, DEF.satSrc); gl.uniform1f(d.uSatAng, DEF.satAng); gl.uniform1f(d.uSatAmt, DEF.satAmt);
   gl.uniform1f(d.uBriSrc, DEF.briSrc); gl.uniform1f(d.uBriAng, DEF.briAng); gl.uniform1f(d.uBriAmt, DEF.briAmt);
   gl.uniform1f(d.uExtraFreqMult, P.v6f ?? 3); gl.uniform1f(d.uExtraWarpMult, P.v6w ?? DEF.extraWarpMult);
-  gl.uniform1f(d.uBgBright, P.v6b ?? 1.5); gl.uniform1f(d.uBgWhite, P.v6wh ?? 0.25);
+  gl.uniform1f(d.uScaleBg, P.v6sb ?? DEF.scale); gl.uniform1f(d.uBlur, P.v6bl ?? 0.05); gl.uniform1f(d.uBgBright, P.v6b ?? 1.5); gl.uniform1f(d.uBgWhite, P.v6wh ?? 0.25);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
