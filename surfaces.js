@@ -48,7 +48,8 @@ const DISPLAY = [
     'uniform float uBriSrc, uBriAng, uBriAmt;',
     'uniform float uExtraFreqMult;',
     'uniform float uExtraWarpMult;',
-    'uniform float uBgBright, uBgWhite, uScaleBg, uBlur;',
+    'uniform float uBgBright, uBgWhite, uScaleBg, uBlur, uShowMask;',
+    'uniform sampler2D uMaskView;',
     '#define PI 3.14159265358979323846',
     '#define PHASE_MAX 6.0',
     'vec3 mod289(vec3 x){ return x - floor(x * (1.0/289.0)) * 289.0; }',
@@ -170,6 +171,7 @@ const DISPLAY = [
     '  float lift = 1.0 - smoothstep(0.2, 0.8, intensity);',
     '  vec3 color = hsv2rgb(vec3(h, s, min(b * (1.0 + lift * (uBgBright - 1.0)), 1.6)));',
     '  color = mix(color, vec3(1.0), lift * uBgWhite);',
+    '  color = mix(color, vec3(texture2D(uMaskView, uv).r), uShowMask);',
     '  gl_FragColor = vec4(color, 1.0);',
     '}'
 ].join('\n');
@@ -203,7 +205,7 @@ export function show(on, stage, vid, P) {
     st = { cv, upd, dis, quad, fb, IW, IH, mt, MW, MH, mc: document.createElement('canvas'), rd: 0, off: [[rnd(), rnd(), 0], [rnd(), rnd(), 0], [rnd(), rnd(), 0]], u: {}, d: {}, t: 0 };
     st.f = new Float32Array(MW * MH); st.f2 = new Float32Array(MW * MH); st.mc.width = MW; st.mc.height = MH;
     for (const n of ['uPrev', 'uMask', 'uResolution', 'uDecay', 'uBleed', 'uPhaseRate', 'uDt', 'uStrength']) st.u[n] = gl.getUniformLocation(upd, n);
-    for (const n of ['uInfluence', 'uResolution', 'uSourceOffset', 'uAngleOffset', 'uAmountOffset', 'uScale', 'uWarpAmount', 'uWarpIterations', 'uSrcFreq', 'uSrcLac', 'uSrcPers', 'uSrcRidge', 'uSrcPow', 'uAngFreq', 'uAngLac', 'uAngPers', 'uAngRidge', 'uAngPow', 'uAmtFreq', 'uAmtLac', 'uAmtPers', 'uAmtRidge', 'uAmtPow', 'uSrcOctaves', 'uAngOctaves', 'uAmtOctaves', 'uHue', 'uSaturation', 'uBrightness', 'uPower', 'uHueSrc', 'uHueAng', 'uHueAmt', 'uSatSrc', 'uSatAng', 'uSatAmt', 'uBriSrc', 'uBriAng', 'uBriAmt', 'uExtraFreqMult', 'uExtraWarpMult', 'uBgBright', 'uBgWhite', 'uScaleBg', 'uBlur']) st.d[n] = gl.getUniformLocation(dis, n);
+    for (const n of ['uInfluence', 'uResolution', 'uSourceOffset', 'uAngleOffset', 'uAmountOffset', 'uScale', 'uWarpAmount', 'uWarpIterations', 'uSrcFreq', 'uSrcLac', 'uSrcPers', 'uSrcRidge', 'uSrcPow', 'uAngFreq', 'uAngLac', 'uAngPers', 'uAngRidge', 'uAngPow', 'uAmtFreq', 'uAmtLac', 'uAmtPers', 'uAmtRidge', 'uAmtPow', 'uSrcOctaves', 'uAngOctaves', 'uAmtOctaves', 'uHue', 'uSaturation', 'uBrightness', 'uPower', 'uHueSrc', 'uHueAng', 'uHueAmt', 'uSatSrc', 'uSatAng', 'uSatAmt', 'uBriSrc', 'uBriAng', 'uBriAmt', 'uExtraFreqMult', 'uExtraWarpMult', 'uBgBright', 'uBgWhite', 'uShowMask', 'uMaskView', 'uScaleBg', 'uBlur']) st.d[n] = gl.getUniformLocation(dis, n);
   }
   st.cv.style.visibility = on ? 'visible' : 'hidden';
 }
@@ -264,5 +266,6 @@ export function frame(vid, P, mk) {
   gl.uniform1f(d.uBriSrc, DEF.briSrc); gl.uniform1f(d.uBriAng, DEF.briAng); gl.uniform1f(d.uBriAmt, DEF.briAmt);
   gl.uniform1f(d.uExtraFreqMult, mixD(P.v6f ?? 2.5)); gl.uniform1f(d.uExtraWarpMult, mixD(P.v6w ?? 2.5));
   gl.uniform1f(d.uScaleBg, P.v6sb ?? DEF.scale); gl.uniform1f(d.uBlur, 0.003); gl.uniform1f(d.uBgBright, mixD(P.v6b ?? 1)); gl.uniform1f(d.uBgWhite, (P.v6wh ?? 0) * df);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.uniform1i(d.uMaskView, 1); gl.uniform1f(d.uShowMask, P.v6pv ? 1 : 0);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 }

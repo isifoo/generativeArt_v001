@@ -1388,26 +1388,11 @@ function v5Seg() {                                      // subject mask for V5, 
   } catch (e) { msg('V5 separator failed: ' + e.message); P.v5b = 0; }
 }
 let v6th = 0.5;
-function v6Mask() {                                      // subject mask for V6: 0 value (brightness) separation, 1 matting model, 2 selfie segmenter. Always in video space.
+function v6Mask() {                                      // subject mask for V6: no model, just brightness. Two values: subject = 1, background = 0, always in video space.
   if (vid.readyState < 2 || !vid.videoWidth) return v5mask;
-  const mode = parseInt($('#v6sep').value);
-  if (mode === 2) { v5Seg(); return v5mask; }
-  if (mode === 1) {
-    if (!rvm.ready) { loadRvm(); return v5mask; }
-    if (rvm.busy) return v5mask;
-    rvm.busy = true;
-    const { ort } = rvm, { w, h } = modelFrame(384, 32);
-    if (rvm.dims !== w + 'x' + h) { rvm.dims = w + 'x' + h; rvm.st = [rvm.zero(), rvm.zero(), rvm.zero(), rvm.zero()]; }
-    const d = mctx.getImageData(0, 0, w, h).data, n = w * h, f = new Float32Array(3 * n);
-    for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
-    rvm.sess.run({ src: new ort.Tensor('float32', f, [1, 3, h, w]), r1i: rvm.st[0], r2i: rvm.st[1], r3i: rvm.st[2], r4i: rvm.st[3], downsample_ratio: rvm.ratio })
-      .then(async (o) => { rvm.st = [o.r1o, o.r2o, o.r3o, o.r4o]; const p = o.pha.data ?? await o.pha.getData(); v5mask = { d: new Float32Array(p), w, h }; })
-      .catch((e) => { msg('Matting run failed: ' + e.message); $('#v6sep').value = '0'; })
-      .finally(() => { rvm.busy = false; });
-    return v5mask;
-  }
+  P.v6pv = parseInt($('#v6pv').value);
   // value separation: Otsu threshold on the brightness, the subject is the darker (or lighter) side; no model involved
-  const { w, h } = modelFrame(96, 8), px = mctx.getImageData(0, 0, w, h).data, n = w * h, L = new Float32Array(n), hist = new Float32Array(64);
+  const { w, h } = modelFrame(192, 8), px = mctx.getImageData(0, 0, w, h).data, n = w * h, L = new Float32Array(n), hist = new Float32Array(64);
   for (let i = 0; i < n; i++) { L[i] = (0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2]) / 255; hist[Math.min(63, (L[i] * 64) | 0)]++; }
   let sumAll = 0; for (let b = 0; b < 64; b++) sumAll += b * hist[b];
   let wB = 0, sB = 0, best = -1, bt = 32;
@@ -1706,10 +1691,9 @@ function setView(id) {
   if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
   $('#stage').classList.toggle('land', land);
   if (id !== 'src') sim.boost = 8;
-  if (id === 'v2' || id === 'v3' || id === 'v4' || id === 'v5' || id === 'v6') loadSegmenter();
+  if (id === 'v2' || id === 'v3' || id === 'v4' || id === 'v5') loadSegmenter();
   if (id === 'v4' && P.smodel === 'rvm') loadRvm();
-  if (id === 'v6' && $('#v6sep').value === '1') loadRvm();
-  if (id === 'v3') { still.last = 0; if (P.smodel === 'rvm') loadRvm(); }
+    if (id === 'v3') { still.last = 0; if (P.smodel === 'rvm') loadRvm(); }
   document.querySelectorAll('#versions button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
   const vl = versions.find((v) => v.id === id);
   $('#setHead').textContent = vl.label + ' settings';
@@ -1748,7 +1732,6 @@ $('#mirror').onchange = (e) => { P.mirror = e.target.checked; if (camStream) vid
 $('#subject').onchange = async (e) => { P.subject = parseInt(e.target.value); if (P.subject) await loadSegmenter(); sim.boost = 8; };
 $('#key').onchange = (e) => { P.key = e.target.checked; sim.boost = 6; };
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-$('#v6sep').onchange = async (e) => { if (e.target.value === '1') await loadRvm(); if (e.target.value === '2') await loadSegmenter(); v5mask = null; };
 $('#smodel').onchange = async (e) => { P.smodel = e.target.value; if (P.smodel === 'rvm') await loadRvm(); };
 $('#v3auto').onchange = (e) => { P.v3auto = e.target.checked; };
 $('#v4i').oninput = (e) => { P.v4i = hex(e.target.value); };
@@ -1851,7 +1834,7 @@ window.__tick = tick; window.__bench_run = benchmark; window.__state = { sim, P 
 
 // ---------------------------------------------------------------- go
 const STORE = 'lineGpuDefaults.v1';
-const SAVE_IDS = ['v6f', 'v6w', 'v6d', 'v6ph', 'v6b', 'v6wh', 'v6sc', 'v6sb', 'v6th', 'v6so', 'v6sep', 'v6pol', 'v6bl', 'v6df', 'v6sp', 'l4min', 'l4max', 'l4a', 'l4b', 'stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5lv', 'v5b', 'v5bl', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
+const SAVE_IDS = ['v6f', 'v6w', 'v6d', 'v6ph', 'v6b', 'v6wh', 'v6sc', 'v6sb', 'v6th', 'v6so', 'v6pol', 'v6bl', 'v6df', 'v6sp', 'l4min', 'l4max', 'l4a', 'l4b', 'stroke', 'rmin', 'rmax', 'gain', 'noise', 'iters', 'px', 'v2s', 'v2r', 'v2a', 'v2b', 'v2m', 'v2mode', 'v2o', 'v2g', 'v3s', 'v3r', 'v3a', 'v3b', 'v3d', 'v3z', 'v3x', 'v3y', 'v3k', 'v3w', 'v3m', 'v3int', 'v3p', 'v3res', 'v4s', 'v4n', 'v4l', 'v4d', 'v4f', 'v4w', 'v4b', 'v4a', 'v4k', 'v4m', 'v4r', 'v4q', 'v4j', 'v4z', 'v4y', 'v5s', 'v5f', 'v5k', 'v5th', 'v5lv', 'v5b', 'v5bl', 'v5sp', 'v5t', 'v5g', 'v5r', 'v5c', 'v5m', 'v5ax', 'v5col', 'v5i', 'v5p', 'v4c', 'v4i', 'v4p', 'v3c', 'smodel', 'fg', 'bg', 'subject'];
 const SAVE_CB = ['mirror', 'key', 'v3auto'];
 function snapshotSettings() {
   const o = { view: sim.view === 'src' ? 'gpu' : sim.view, v6rev: 3, v: {}, c: {}, l: {} };
