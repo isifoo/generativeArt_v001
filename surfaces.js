@@ -200,7 +200,7 @@ export function show(on, stage, vid, P) {
     const MW = 90, MH = 160, mt = tex(0, 0, gl.LINEAR);
     const rnd = () => Math.random() * 8;
     st = { cv, upd, dis, quad, fb, IW, IH, mt, MW, MH, mc: document.createElement('canvas'), rd: 0, off: [[rnd(), rnd(), 0], [rnd(), rnd(), 0], [rnd(), rnd(), 0]], u: {}, d: {}, t: 0 };
-    st.mc.width = MW; st.mc.height = MH;
+    st.f = new Float32Array(MW * MH); st.f2 = new Float32Array(MW * MH); st.mc.width = MW; st.mc.height = MH;
     for (const n of ['uPrev', 'uMask', 'uResolution', 'uDecay', 'uBleed', 'uPhaseRate', 'uDt', 'uStrength']) st.u[n] = gl.getUniformLocation(upd, n);
     for (const n of ['uInfluence', 'uResolution', 'uSourceOffset', 'uAngleOffset', 'uAmountOffset', 'uScale', 'uWarpAmount', 'uWarpIterations', 'uSrcFreq', 'uSrcLac', 'uSrcPers', 'uSrcRidge', 'uSrcPow', 'uAngFreq', 'uAngLac', 'uAngPers', 'uAngRidge', 'uAngPow', 'uAmtFreq', 'uAmtLac', 'uAmtPers', 'uAmtRidge', 'uAmtPow', 'uSrcOctaves', 'uAngOctaves', 'uAmtOctaves', 'uHue', 'uSaturation', 'uBrightness', 'uPower', 'uHueSrc', 'uHueAng', 'uHueAmt', 'uSatSrc', 'uSatAng', 'uSatAmt', 'uBriSrc', 'uBriAng', 'uBriAmt', 'uExtraFreqMult', 'uExtraWarpMult', 'uBgBright', 'uBgWhite', 'uScaleBg', 'uBlur']) st.d[n] = gl.getUniformLocation(dis, n);
   }
@@ -219,9 +219,15 @@ export function frame(vid, P, mk) {
       const cx = P.mirror ? MW - 1 - i : i;
       const u = (vw - cw) / 2 + ((cx + 0.5) / MW) * cw, v = (vh - ch) / 2 + ((j + 0.5) / MH) * ch;
       const m = mk.d[Math.min(mk.h - 1, (v / vh * mk.h) | 0) * mk.w + Math.min(mk.w - 1, (u / vw * mk.w) | 0)];
-      const k = (j * MW + i) * 4, g = Math.round(255 * Math.min(1, Math.max(0, (m - 0.2) / 0.6)));
-      o[k] = o[k + 1] = o[k + 2] = g; o[k + 3] = 255;
+      st.f[j * MW + i] = Math.min(1, Math.max(0, (m - 0.2) / 0.6));
     }
+    // wide soft edge: three box blur passes, so the object fades into the background instead of ending at a contour
+    const R = Math.round(P.v6bl ?? 6), f = st.f, t = st.f2;
+    if (R > 0) for (let pass = 0; pass < 3; pass++) {
+      for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { let a = 0, n = 0; for (let q = -R; q <= R; q++) { const ii = i + q; if (ii >= 0 && ii < MW) { a += f[j * MW + ii]; n++; } } t[j * MW + i] = a / n; }
+      for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { let a = 0, n = 0; for (let q = -R; q <= R; q++) { const jj = j + q; if (jj >= 0 && jj < MH) { a += t[jj * MW + i]; n++; } } f[j * MW + i] = a / n; }
+    }
+    for (let k = 0; k < f.length; k++) { const g = Math.round(255 * f[k]); o[k * 4] = o[k * 4 + 1] = o[k * 4 + 2] = g; o[k * 4 + 3] = 255; }
   } else for (let k = 0; k < o.length; k += 4) o[k + 3] = 255;
   x.putImageData(im, 0, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -254,7 +260,7 @@ export function frame(vid, P, mk) {
   gl.uniform1f(d.uHueSrc, DEF.hueSrc); gl.uniform1f(d.uHueAng, DEF.hueAng); gl.uniform1f(d.uHueAmt, DEF.hueAmt);
   gl.uniform1f(d.uSatSrc, DEF.satSrc); gl.uniform1f(d.uSatAng, DEF.satAng); gl.uniform1f(d.uSatAmt, DEF.satAmt);
   gl.uniform1f(d.uBriSrc, DEF.briSrc); gl.uniform1f(d.uBriAng, DEF.briAng); gl.uniform1f(d.uBriAmt, DEF.briAmt);
-  gl.uniform1f(d.uExtraFreqMult, P.v6f ?? 3); gl.uniform1f(d.uExtraWarpMult, P.v6w ?? DEF.extraWarpMult);
-  gl.uniform1f(d.uScaleBg, P.v6sb ?? DEF.scale); gl.uniform1f(d.uBlur, P.v6bl ?? 0.05); gl.uniform1f(d.uBgBright, P.v6b ?? 1.5); gl.uniform1f(d.uBgWhite, P.v6wh ?? 0.25);
+  gl.uniform1f(d.uExtraFreqMult, P.v6f ?? 1.8); gl.uniform1f(d.uExtraWarpMult, P.v6w ?? 1.4);
+  gl.uniform1f(d.uScaleBg, P.v6sb ?? DEF.scale); gl.uniform1f(d.uBlur, 0.003); gl.uniform1f(d.uBgBright, P.v6b ?? 1.25); gl.uniform1f(d.uBgWhite, P.v6wh ?? 0.12);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
