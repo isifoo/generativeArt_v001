@@ -232,7 +232,8 @@ export function frame(vid, P, mk) {
   x.putImageData(im, 0, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, mc);
-  const sp = P.v6sp ?? 1;
+  const sp = P.v6sp ?? 1, df = P.v6df ?? 0.4;   // df scales every difference between object and background: 0 = identical, 1 = full
+  const mixD = (v) => 1 + (v - 1) * df;
   for (const f of st.off) f[2] += DEF.animSpeed * sp * dt * 6;
   // update pass: decay + bleed + the mask as the "mouse"
   const w = 1 - st.rd, u = st.u;
@@ -241,7 +242,7 @@ export function frame(vid, P, mk) {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, st.fb[st.rd].t); gl.uniform1i(u.uPrev, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.mt); gl.uniform1i(u.uMask, 1);
   gl.uniform2f(u.uResolution, st.IW, st.IH); gl.uniform1f(u.uDecay, P.v6d ?? 0.95); gl.uniform1f(u.uBleed, DEF.bleed);
-  gl.uniform1f(u.uPhaseRate, P.v6ph ?? 1.5); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uStrength, P.v6s ?? 1);
+  gl.uniform1f(u.uPhaseRate, (P.v6ph ?? 1.5) * df); gl.uniform1f(u.uDt, dt); gl.uniform1f(u.uStrength, P.v6s ?? 1);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   st.rd = w;
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, st.cv.width, st.cv.height);
@@ -260,7 +261,7 @@ export function frame(vid, P, mk) {
   gl.uniform1f(d.uHueSrc, DEF.hueSrc); gl.uniform1f(d.uHueAng, DEF.hueAng); gl.uniform1f(d.uHueAmt, DEF.hueAmt);
   gl.uniform1f(d.uSatSrc, DEF.satSrc); gl.uniform1f(d.uSatAng, DEF.satAng); gl.uniform1f(d.uSatAmt, DEF.satAmt);
   gl.uniform1f(d.uBriSrc, DEF.briSrc); gl.uniform1f(d.uBriAng, DEF.briAng); gl.uniform1f(d.uBriAmt, DEF.briAmt);
-  gl.uniform1f(d.uExtraFreqMult, P.v6f ?? 1.8); gl.uniform1f(d.uExtraWarpMult, P.v6w ?? 1.4);
-  gl.uniform1f(d.uScaleBg, P.v6sb ?? DEF.scale); gl.uniform1f(d.uBlur, 0.003); gl.uniform1f(d.uBgBright, P.v6b ?? 1.25); gl.uniform1f(d.uBgWhite, P.v6wh ?? 0.12);
+  gl.uniform1f(d.uExtraFreqMult, mixD(P.v6f ?? 1.8)); gl.uniform1f(d.uExtraWarpMult, mixD(P.v6w ?? 1.4));
+  gl.uniform1f(d.uScaleBg, P.v6sb ?? DEF.scale); gl.uniform1f(d.uBlur, 0.003); gl.uniform1f(d.uBgBright, mixD(P.v6b ?? 1.25)); gl.uniform1f(d.uBgWhite, (P.v6wh ?? 0.12) * df);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 }

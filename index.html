@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Line GPU</title>
-<meta name="build" content="20261026234900">
+<meta name="build" content="20261026235801">
 <style>
   :root { --bg:#141414; --panel:#1c1c1c; --line:#2e2e2e; --fg:#e8e6e3; --dim:#8a8784; --accent:#d23219; }
   * { box-sizing:border-box; }
@@ -51,7 +51,7 @@
   <div id="newver" hidden style="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9;background:#d23219;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font:13px system-ui">New version available. Click to reload.</div>
   <div id="side">
     <div>
-      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.33 (2026-10-26 23:49)</span></h2>
+      <h2>Version <span id="ver" style="text-transform:none;letter-spacing:0;font-weight:400">v2.34 (2026-10-26 23:58)</span></h2>
       <div class="row" id="versions"></div>
     </div>
     <div id="msg"></div>
@@ -107,6 +107,7 @@
       <div class="ctl" data-views="v5"><span>Colour</span><select id="v5col"><option value="2" selected>Black / white flip</option><option value="1">Camera colours</option><option value="0">Ink / paper</option></select><span></span></div>
       <div class="ctl" data-views="v5"><span>Ink / paper</span><span><input type="color" id="v5i" value="#141416"> <input type="color" id="v5p" value="#f0eeea"></span><span></span></div>
       <div class="ctl" data-views="v5"><span>Cube px</span><input type="range" id="v5s" min="8" max="80" step="1" value="24"><output></output></div>
+      <div class="ctl" data-views="v6"><span>Object vs background difference</span><input type="range" id="v6df" min="0" max="1" step="0.01" value="0.4"><output></output></div>
       <div class="ctl" data-views="v6"><span>Object detail boost</span><input type="range" id="v6f" min="1" max="8" step="0.1" value="1.8"><output></output></div>
       <div class="ctl" data-views="v6"><span>Object warp boost</span><input type="range" id="v6w" min="1" max="4" step="0.05" value="1.4"><output></output></div>
       <div class="ctl" data-views="v6"><span>Trail (higher = longer)</span><input type="range" id="v6d" min="0.8" max="0.99" step="0.005" value="0.95"><output></output></div>
@@ -165,6 +166,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="gpu_line.js?b=20261026234900"></script>
+<script type="module" src="gpu_line.js?b=20261026235801"></script>
 </body>
 </html>
