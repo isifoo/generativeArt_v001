@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Invaders</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Invaders">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<style>
+  :root { --bg:#000; --pad:#111; --edge:#2a2a2a; --fg:#e8e6e3; --dim:#6a6a6a; --green:#3cff5a; --red:#ff3c3c; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); overflow:hidden; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:none;
+    font:700 14px/1 ui-monospace, Menlo, Consolas, monospace; }
+  #game { position:fixed; inset:0; display:grid;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    grid-template-areas:"screen screen" "lpad rpad"; grid-template-columns:1fr 1fr; grid-template-rows:minmax(0,1fr) auto; }
+  #screenbox { grid-area:screen; min-width:0; min-height:0; display:flex; align-items:center; justify-content:center; }
+  #crt { position:relative; }
+  #screen { display:block; width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; }
+  /* one dark line per logical pixel row for a CRT feel; --px is set from JS */
+  #crt::after { content:""; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--px,4px) * .6), rgba(0,0,0,.28) calc(var(--px,4px) * .6), rgba(0,0,0,.28) var(--px,4px)); }
+  .pad { display:flex; gap:12px; padding:14px 16px 18px; align-items:center; }
+  #lpad { grid-area:lpad; justify-content:flex-start; }
+  #rpad { grid-area:rpad; justify-content:flex-end; }
+  .btn { flex:0 0 auto; display:flex; align-items:center; justify-content:center; color:var(--fg);
+    background:var(--pad); border:2px solid var(--edge); border-radius:14px; touch-action:none; }
+  .btn.held { background:#1f3b23; border-color:var(--green); color:var(--green); }
+  .move { width:76px; height:76px; font-size:30px; }
+  #fire { width:104px; height:104px; border-radius:50%; font-size:16px; letter-spacing:.1em; border-color:#5a2020; color:#ff8a8a; }
+  #fire.held { background:#3b1f1f; border-color:var(--red); color:var(--red); }
+  .small { flex-direction:column; gap:12px; }
+  .mini { width:44px; height:44px; font-size:14px; border-radius:10px; color:var(--dim); }
+  .mini.off { text-decoration:line-through; }
+  @media (orientation:landscape) {
+    #game { grid-template-areas:"lpad screen rpad"; grid-template-columns:1fr minmax(0,2.4fr) 1fr; grid-template-rows:minmax(0,1fr); }
+    .pad { flex-direction:column; justify-content:flex-end !important; }
+    #lpad { align-items:flex-start; } #lpad .row { display:flex; gap:12px; }
+    #rpad { align-items:flex-end; }
+    .small { flex-direction:row; }
+  }
+  /* desktop: keyboard is enough, keep the pads but smaller */
+  @media (hover:hover) and (pointer:fine) { .move { width:56px; height:56px; } #fire { width:76px; height:76px; } }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="screenbox"><div id="crt"><canvas id="screen" width="224" height="256"></canvas></div></div>
+  <div id="lpad" class="pad"><div class="row" style="display:flex;gap:12px">
+    <div class="btn move" data-k="left" aria-label="Left">&#9664;</div>
+    <div class="btn move" data-k="right" aria-label="Right">&#9654;</div>
+  </div></div>
+  <div id="rpad" class="pad">
+    <div class="small" style="display:flex">
+      <div class="btn mini" id="pause" data-k="pause" aria-label="Pause">II</div>
+      <div class="btn mini" id="sound" data-k="sound" aria-label="Sound">&#9834;</div>
+    </div>
+    <div class="btn" id="fire" data-k="fire">FIRE</div>
+  </div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
